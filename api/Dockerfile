@@ -6,14 +6,6 @@ WORKDIR /app/api
 # Install Poetry
 ENV POETRY_VERSION=2.0.1
 
-# Set build-time proxy settings
-ARG http_proxy
-ARG https_proxy
-
-# Use the proxy settings during the build process
-ENV http_proxy=${http_proxy}
-ENV https_proxy=${https_proxy}
-
 # if you located in China, you can use aliyun mirror to speed up
 RUN pip install --no-cache-dir poetry==${POETRY_VERSION} -i https://mirrors.aliyun.com/pypi/simple/
 
@@ -27,14 +19,6 @@ ENV POETRY_VIRTUALENVS_CREATE=true
 ENV POETRY_REQUESTS_TIMEOUT=30
 
 FROM base AS packages
-
-# Set build-time proxy settings
-ARG http_proxy
-ARG https_proxy
-
-# Use the proxy settings during the build process
-ENV http_proxy=${http_proxy}
-ENV https_proxy=${https_proxy}
 
 # if you located in China, you can use aliyun mirror to speed up
 RUN echo "Before change:" && cat /etc/apt/sources.list.d/debian.sources \
