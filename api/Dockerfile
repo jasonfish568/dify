@@ -6,9 +6,6 @@ WORKDIR /app/api
 # Install Poetry
 ENV POETRY_VERSION=2.0.1
 
-# Disable interaction during the build process
-ENV DEBIAN_FRONTEND=noninteractive
-
 # Set build-time proxy settings
 ARG http_proxy
 ARG https_proxy
@@ -31,6 +28,14 @@ ENV POETRY_REQUESTS_TIMEOUT=30
 
 FROM base AS packages
 
+# Set build-time proxy settings
+ARG http_proxy
+ARG https_proxy
+
+# Use the proxy settings during the build process
+ENV http_proxy=${http_proxy}
+ENV https_proxy=${https_proxy}
+
 # if you located in China, you can use aliyun mirror to speed up
 RUN echo "Before change:" && cat /etc/apt/sources.list.d/debian.sources \
     && sed -i 's@deb.debian.org@mirrors.aliyun.com@g' /etc/apt/sources.list.d/debian.sources \
@@ -41,8 +46,8 @@ RUN apt-get update \
 
 # Install Python dependencies
 COPY pyproject.toml poetry.lock ./
-# Add Aliyun mirror for Poetry
-RUN poetry config repositories.aliyun https://mirrors.aliyun.com/pypi/simple/
+# Add Tsinghua mirror for Poetry
+RUN poetry config repositories.tuna https://pypi.tuna.tsinghua.edu.cn/simple
 RUN poetry install --sync --no-cache --no-root
 
 # production stage
@@ -62,6 +67,11 @@ EXPOSE 5001
 ENV TZ=UTC
 
 WORKDIR /app/api
+
+# if you located in China, you can use aliyun mirror to speed up
+RUN echo "Before change:" && cat /etc/apt/sources.list.d/debian.sources \
+    && sed -i 's@deb.debian.org@mirrors.aliyun.com@g' /etc/apt/sources.list.d/debian.sources \
+    && echo "After change:" && cat /etc/apt/sources.list.d/debian.sources
 
 RUN \
     apt-get update \
