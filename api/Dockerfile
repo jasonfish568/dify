@@ -46,8 +46,6 @@ RUN apt-get update \
 
 # Install Python dependencies
 COPY pyproject.toml poetry.lock ./
-# Add Tsinghua mirror for Poetry
-RUN poetry config repositories.tuna https://pypi.tuna.tsinghua.edu.cn/simple
 RUN poetry install --sync --no-cache --no-root
 
 # production stage
