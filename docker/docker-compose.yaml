@@ -410,6 +410,8 @@ services:
       SENTRY_DSN: ${API_SENTRY_DSN:-}
       SENTRY_TRACES_SAMPLE_RATE: ${API_SENTRY_TRACES_SAMPLE_RATE:-1.0}
       SENTRY_PROFILES_SAMPLE_RATE: ${API_SENTRY_PROFILES_SAMPLE_RATE:-1.0}
+      http_proxy: http://127.0.0.1:8087
+      https_proxy: http://127.0.0.1:8087
     depends_on:
       - db
       - redis
