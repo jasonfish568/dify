@@ -6,6 +6,9 @@ WORKDIR /app/api
 # Install Poetry
 ENV POETRY_VERSION=2.0.1
 
+# Disable interaction during the build process
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Set build-time proxy settings
 ARG http_proxy
 ARG https_proxy
