@@ -7,9 +7,9 @@ WORKDIR /app/api
 ENV POETRY_VERSION=2.0.1
 
 # if you located in China, you can use aliyun mirror to speed up
-# RUN pip install --no-cache-dir poetry==${POETRY_VERSION} -i https://mirrors.aliyun.com/pypi/simple/
+RUN pip install --no-cache-dir poetry==${POETRY_VERSION} -i https://mirrors.aliyun.com/pypi/simple/
 
-RUN pip install --no-cache-dir poetry==${POETRY_VERSION}
+#RUN pip install --no-cache-dir poetry==${POETRY_VERSION}
 
 # Configure Poetry
 ENV POETRY_CACHE_DIR=/tmp/poetry_cache
