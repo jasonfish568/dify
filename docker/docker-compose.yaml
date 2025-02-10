@@ -423,10 +423,7 @@ services:
   # worker service
   # The Celery worker for processing the queue.
   worker:
-    build:
-      context: ../api
-      dockerfile: Dockerfile
-#    image: langgenius/dify-api:0.15.3
+    image: langgenius/dify-api:0.15.3
     restart: always
     environment:
       # Use the shared environment variables.
