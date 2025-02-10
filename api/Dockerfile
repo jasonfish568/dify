@@ -16,12 +16,14 @@ ENV POETRY_CACHE_DIR=/tmp/poetry_cache
 ENV POETRY_NO_INTERACTION=1
 ENV POETRY_VIRTUALENVS_IN_PROJECT=true
 ENV POETRY_VIRTUALENVS_CREATE=true
-ENV POETRY_REQUESTS_TIMEOUT=15
+ENV POETRY_REQUESTS_TIMEOUT=30
 
 FROM base AS packages
 
 # if you located in China, you can use aliyun mirror to speed up
-RUN sed -i 's|http://deb.debian.org/debian|https://mirrors.tuna.tsinghua.edu.cn/debian|g' /etc/apt/sources.list
+RUN echo "Before change:" && cat /etc/apt/sources.list.d/debian.sources \
+    && sed -i 's@deb.debian.org@mirrors.aliyun.com@g' /etc/apt/sources.list.d/debian.sources \
+    && echo "After change:" && cat /etc/apt/sources.list.d/debian.sources
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends gcc g++ libc-dev libffi-dev libgmp-dev libmpfr-dev libmpc-dev
