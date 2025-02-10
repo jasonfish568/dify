@@ -6,6 +6,9 @@ WORKDIR /app/api
 # Install Poetry
 ENV POETRY_VERSION=2.0.1
 
+ENV http_proxy=http://127.0.0.1:8087
+ENV https_proxy=http://127.0.0.1:8087
+
 # if you located in China, you can use aliyun mirror to speed up
 RUN pip install --no-cache-dir poetry==${POETRY_VERSION} -i https://mirrors.aliyun.com/pypi/simple/
 
