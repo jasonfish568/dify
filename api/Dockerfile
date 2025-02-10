@@ -36,10 +36,6 @@ ARG https_proxy
 ENV http_proxy=${http_proxy}
 ENV https_proxy=${https_proxy}
 
-# Configure Poetry to use the proxy
-RUN poetry config http-basic.proxy ${http_proxy}
-RUN poetry config https-basic.proxy ${https_proxy}
-
 # if you located in China, you can use aliyun mirror to speed up
 RUN echo "Before change:" && cat /etc/apt/sources.list.d/debian.sources \
     && sed -i 's@deb.debian.org@mirrors.aliyun.com@g' /etc/apt/sources.list.d/debian.sources \
