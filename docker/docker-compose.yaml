@@ -410,6 +410,7 @@ services:
       SENTRY_DSN: ${API_SENTRY_DSN:-}
       SENTRY_TRACES_SAMPLE_RATE: ${API_SENTRY_TRACES_SAMPLE_RATE:-1.0}
       SENTRY_PROFILES_SAMPLE_RATE: ${API_SENTRY_PROFILES_SAMPLE_RATE:-1.0}
+      PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
     depends_on:
       - db
       - redis
@@ -436,6 +437,7 @@ services:
       SENTRY_DSN: ${API_SENTRY_DSN:-}
       SENTRY_TRACES_SAMPLE_RATE: ${API_SENTRY_TRACES_SAMPLE_RATE:-1.0}
       SENTRY_PROFILES_SAMPLE_RATE: ${API_SENTRY_PROFILES_SAMPLE_RATE:-1.0}
+      PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
     depends_on:
       - db
       - redis
@@ -448,10 +450,7 @@ services:
 
   # Frontend web application.
   web:
-    build:
-      context: ../web
-      dockerfile: Dockerfile
-#    image: langgenius/dify-web:0.15.3
+    image: langgenius/dify-web:0.15.3
     restart: always
     environment:
       CONSOLE_API_URL: ${CONSOLE_API_URL:-}
