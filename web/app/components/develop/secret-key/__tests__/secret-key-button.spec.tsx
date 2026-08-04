@@ -3,34 +3,44 @@ import userEvent from '@testing-library/user-event'
 import SecretKeyButton from '../secret-key-button'
 
 vi.mock('@/app/components/develop/secret-key/secret-key-modal', () => ({
-  default: ({ isShow, onClose, appId }: { isShow: boolean, onClose: () => void, appId?: string }) => (
-    isShow
-      ? (
-          <div data-testid="secret-key-modal">
-            <span data-testid="modal-app-id">{`Modal for ${appId || 'no-app'}`}</span>
-            <button onClick={onClose} data-testid="close-modal">Close</button>
-          </div>
-        )
-      : null
-  ),
+  default: ({
+    isShow,
+    onClose,
+    appId,
+    canManage,
+  }: {
+    isShow: boolean
+    onClose: () => void
+    appId?: string
+    canManage: boolean
+  }) =>
+    isShow ? (
+      <div data-testid="secret-key-modal">
+        <span data-testid="modal-app-id">{`Modal for ${appId || 'no-app'}`}</span>
+        <span data-testid="modal-can-manage">{String(canManage)}</span>
+        <button onClick={onClose} data-testid="close-modal">
+          Close
+        </button>
+      </div>
+    ) : null,
 }))
 
 describe('SecretKeyButton', () => {
   describe('rendering', () => {
     it('should render the button', () => {
       render(<SecretKeyButton />)
-      expect(screen.getByRole('button')).toBeInTheDocument()
+      expect(screen.getByRole('button'))!.toBeInTheDocument()
     })
 
     it('should render the API key text', () => {
       render(<SecretKeyButton />)
-      expect(screen.getByText('appApi.apiKey')).toBeInTheDocument()
+      expect(screen.getByText('appApi.apiKey'))!.toBeInTheDocument()
     })
 
     it('should render the key icon', () => {
       const { container } = render(<SecretKeyButton />)
-      const svg = container.querySelector('svg')
-      expect(svg).toBeInTheDocument()
+      const icon = container.querySelector('.i-ri-key-2-line')
+      expect(icon)!.toBeInTheDocument()
     })
 
     it('should not show modal initially', () => {
@@ -42,26 +52,26 @@ describe('SecretKeyButton', () => {
   describe('button interaction', () => {
     it('should open modal when button is clicked', async () => {
       const user = userEvent.setup()
-      render(<SecretKeyButton />)
+      render(<SecretKeyButton canManage />)
 
       const button = screen.getByRole('button')
       await act(async () => {
         await user.click(button)
       })
 
-      expect(screen.getByTestId('secret-key-modal')).toBeInTheDocument()
+      expect(screen.getByTestId('secret-key-modal'))!.toBeInTheDocument()
     })
 
     it('should close modal when onClose is called', async () => {
       const user = userEvent.setup()
-      render(<SecretKeyButton />)
+      render(<SecretKeyButton canManage />)
 
       const button = screen.getByRole('button')
       await act(async () => {
         await user.click(button)
       })
 
-      expect(screen.getByTestId('secret-key-modal')).toBeInTheDocument()
+      expect(screen.getByTestId('secret-key-modal'))!.toBeInTheDocument()
 
       const closeButton = screen.getByTestId('close-modal')
       await act(async () => {
@@ -73,14 +83,14 @@ describe('SecretKeyButton', () => {
 
     it('should toggle modal visibility', async () => {
       const user = userEvent.setup()
-      render(<SecretKeyButton />)
+      render(<SecretKeyButton canManage />)
 
       const button = screen.getByRole('button')
 
       await act(async () => {
         await user.click(button)
       })
-      expect(screen.getByTestId('secret-key-modal')).toBeInTheDocument()
+      expect(screen.getByTestId('secret-key-modal'))!.toBeInTheDocument()
 
       const closeButton = screen.getByTestId('close-modal')
       await act(async () => {
@@ -91,39 +101,65 @@ describe('SecretKeyButton', () => {
       await act(async () => {
         await user.click(button)
       })
-      expect(screen.getByTestId('secret-key-modal')).toBeInTheDocument()
+      expect(screen.getByTestId('secret-key-modal'))!.toBeInTheDocument()
     })
   })
 
   describe('props', () => {
-    it('should apply custom className', () => {
-      render(<SecretKeyButton className="custom-class" />)
-      const button = screen.getByRole('button')
-      expect(button.className).toContain('custom-class')
-    })
-
     it('should pass appId to modal', async () => {
       const user = userEvent.setup()
-      render(<SecretKeyButton appId="app-123" />)
+      render(<SecretKeyButton appId="app-123" canManage />)
 
       const button = screen.getByRole('button')
       await act(async () => {
         await user.click(button)
       })
 
-      expect(screen.getByText('Modal for app-123')).toBeInTheDocument()
+      expect(screen.getByText('Modal for app-123'))!.toBeInTheDocument()
     })
 
     it('should handle undefined appId', async () => {
       const user = userEvent.setup()
-      render(<SecretKeyButton />)
+      render(<SecretKeyButton canManage />)
 
       const button = screen.getByRole('button')
       await act(async () => {
         await user.click(button)
       })
 
-      expect(screen.getByText('Modal for no-app')).toBeInTheDocument()
+      expect(screen.getByText('Modal for no-app'))!.toBeInTheDocument()
+    })
+
+    it('should pass canManage to modal', async () => {
+      const user = userEvent.setup()
+      render(<SecretKeyButton appId="app-123" canManage />)
+
+      const button = screen.getByRole('button')
+      await act(async () => {
+        await user.click(button)
+      })
+
+      expect(screen.getByTestId('modal-can-manage')).toHaveTextContent('true')
+    })
+
+    it('should disable the button and keep modal closed when canManage is false', async () => {
+      const user = userEvent.setup()
+      render(<SecretKeyButton appId="app-123" canManage={false} />)
+
+      const button = screen.getByRole('button')
+      expect(button).toBeDisabled()
+
+      await act(async () => {
+        await user.click(button)
+      })
+
+      expect(screen.queryByTestId('secret-key-modal')).not.toBeInTheDocument()
+    })
+
+    it('should disable the button by default when canManage is omitted', () => {
+      render(<SecretKeyButton appId="app-123" />)
+
+      expect(screen.getByRole('button')).toBeDisabled()
     })
 
     it('should apply custom textCls', () => {
@@ -139,51 +175,33 @@ describe('SecretKeyButton', () => {
       const button = screen.getByRole('button')
       expect(button.className).toContain('px-3')
     })
-
-    it('should have small size', () => {
-      render(<SecretKeyButton />)
-      const button = screen.getByRole('button')
-      expect(button.className).toContain('btn-small')
-    })
-
-    it('should have ghost variant', () => {
-      render(<SecretKeyButton />)
-      const button = screen.getByRole('button')
-      expect(button.className).toContain('btn-ghost')
-    })
   })
 
   describe('icon styling', () => {
     it('should have icon container with flex layout', () => {
       const { container } = render(<SecretKeyButton />)
       const iconContainer = container.querySelector('.flex.items-center.justify-center')
-      expect(iconContainer).toBeInTheDocument()
+      expect(iconContainer)!.toBeInTheDocument()
     })
 
     it('should have correct icon dimensions', () => {
       const { container } = render(<SecretKeyButton />)
-      const iconContainer = container.querySelector('.h-3\\.5.w-3\\.5')
-      expect(iconContainer).toBeInTheDocument()
+      const iconContainer = container.querySelector('.size-3\\.5')
+      expect(iconContainer)!.toBeInTheDocument()
     })
 
     it('should have tertiary text color on icon', () => {
       const { container } = render(<SecretKeyButton />)
       const icon = container.querySelector('.text-text-tertiary')
-      expect(icon).toBeInTheDocument()
+      expect(icon)!.toBeInTheDocument()
     })
   })
 
   describe('text styling', () => {
-    it('should have system-xs-medium class', () => {
-      render(<SecretKeyButton />)
-      const text = screen.getByText('appApi.apiKey')
-      expect(text.className).toContain('system-xs-medium')
-    })
-
     it('should have horizontal padding', () => {
       render(<SecretKeyButton />)
       const text = screen.getByText('appApi.apiKey')
-      expect(text.className).toContain('px-[3px]')
+      expect(text.className).toContain('px-0.75')
     })
 
     it('should have tertiary text color', () => {
@@ -196,7 +214,7 @@ describe('SecretKeyButton', () => {
   describe('modal props', () => {
     it('should pass isShow prop to modal', async () => {
       const user = userEvent.setup()
-      render(<SecretKeyButton />)
+      render(<SecretKeyButton canManage />)
 
       expect(screen.queryByTestId('secret-key-modal')).not.toBeInTheDocument()
 
@@ -205,12 +223,12 @@ describe('SecretKeyButton', () => {
         await user.click(button)
       })
 
-      expect(screen.getByTestId('secret-key-modal')).toBeInTheDocument()
+      expect(screen.getByTestId('secret-key-modal'))!.toBeInTheDocument()
     })
 
     it('should pass onClose callback to modal', async () => {
       const user = userEvent.setup()
-      render(<SecretKeyButton />)
+      render(<SecretKeyButton canManage />)
 
       const button = screen.getByRole('button')
       await act(async () => {
@@ -230,12 +248,12 @@ describe('SecretKeyButton', () => {
     it('should have accessible button', () => {
       render(<SecretKeyButton />)
       const button = screen.getByRole('button')
-      expect(button).toBeInTheDocument()
+      expect(button)!.toBeInTheDocument()
     })
 
     it('should be keyboard accessible', async () => {
       const user = userEvent.setup()
-      render(<SecretKeyButton />)
+      render(<SecretKeyButton canManage />)
 
       const button = screen.getByRole('button')
       button.focus()
@@ -245,7 +263,7 @@ describe('SecretKeyButton', () => {
         await user.keyboard('{Enter}')
       })
 
-      expect(screen.getByTestId('secret-key-modal')).toBeInTheDocument()
+      expect(screen.getByTestId('secret-key-modal'))!.toBeInTheDocument()
     })
   })
 
@@ -254,8 +272,8 @@ describe('SecretKeyButton', () => {
       const user = userEvent.setup()
       render(
         <>
-          <SecretKeyButton appId="app-1" />
-          <SecretKeyButton appId="app-2" />
+          <SecretKeyButton appId="app-1" canManage />
+          <SecretKeyButton appId="app-2" canManage />
         </>,
       )
 
@@ -263,10 +281,10 @@ describe('SecretKeyButton', () => {
       expect(buttons).toHaveLength(2)
 
       await act(async () => {
-        await user.click(buttons[0])
+        await user.click(buttons[0]!)
       })
 
-      expect(screen.getByText('Modal for app-1')).toBeInTheDocument()
+      expect(screen.getByText('Modal for app-1'))!.toBeInTheDocument()
 
       const closeButton = screen.getByTestId('close-modal')
       await act(async () => {
@@ -274,10 +292,10 @@ describe('SecretKeyButton', () => {
       })
 
       await act(async () => {
-        await user.click(buttons[1])
+        await user.click(buttons[1]!)
       })
 
-      expect(screen.getByText('Modal for app-2')).toBeInTheDocument()
+      expect(screen.getByText('Modal for app-2'))!.toBeInTheDocument()
     })
   })
 })

@@ -1,8 +1,8 @@
 import type { FC, ReactNode } from 'react'
+import { cn } from '@langgenius/dify-ui/cn'
 import { useEffect, useState } from 'react'
 import Badge, { BadgeState } from '@/app/components/base/badge/index'
 import { useInstalledPluginList } from '@/service/use-plugins'
-import { cn } from '@/utils/classnames'
 
 type Option = {
   value: string
@@ -17,14 +17,10 @@ type TabSliderProps = {
   options: Option[]
 }
 
-const TabSlider: FC<TabSliderProps> = ({
-  className,
-  itemClassName,
-  value,
-  onChange,
-  options,
-}) => {
-  const [activeIndex, setActiveIndex] = useState(() => options.findIndex(option => option.value === value))
+const TabSlider: FC<TabSliderProps> = ({ className, itemClassName, value, onChange, options }) => {
+  const [activeIndex, setActiveIndex] = useState(() =>
+    options.findIndex((option) => option.value === value),
+  )
   const [sliderStyle, setSliderStyle] = useState({})
   const { data: pluginList } = useInstalledPluginList()
 
@@ -40,7 +36,7 @@ const TabSlider: FC<TabSliderProps> = ({
   }
 
   useEffect(() => {
-    const newIndex = options.findIndex(option => option.value === value)
+    const newIndex = options.findIndex((option) => option.value === value)
     setActiveIndex(newIndex)
     updateSliderStyle(newIndex)
   }, [value, options, pluginList?.total])
@@ -48,11 +44,14 @@ const TabSlider: FC<TabSliderProps> = ({
   return (
     <div
       data-testid="tab-slider-container"
-      className={cn(className, 'relative inline-flex items-center justify-center rounded-[10px] bg-components-segmented-control-bg-normal p-0.5')}
+      className={cn(
+        className,
+        'relative inline-flex items-center justify-center rounded-[10px] bg-components-segmented-control-bg-normal p-0.5',
+      )}
     >
       <div
         data-testid="tab-slider-bg"
-        className="shadows-shadow-xs absolute bottom-0.5 left-0 right-0 top-0.5 rounded-[10px] bg-components-panel-bg transition-transform duration-300 ease-in-out"
+        className="shadows-shadow-xs absolute top-0.5 right-0 bottom-0.5 left-0 rounded-[10px] bg-components-panel-bg transition-transform duration-300 ease-in-out"
         style={sliderStyle}
       />
       {options.map((option, index) => (
@@ -63,10 +62,10 @@ const TabSlider: FC<TabSliderProps> = ({
           className={cn(
             'relative z-10 flex cursor-pointer items-center justify-center gap-1 rounded-[10px] px-2.5 py-1.5 transition-colors duration-300 ease-in-out',
             'system-md-semibold',
-            index === activeIndex
-              ? 'text-text-primary'
-              : 'text-text-tertiary',
-            typeof itemClassName === 'function' ? itemClassName(index === activeIndex) : itemClassName,
+            index === activeIndex ? 'text-text-primary' : 'text-text-tertiary',
+            typeof itemClassName === 'function'
+              ? itemClassName(index === activeIndex)
+              : itemClassName,
           )}
           onClick={() => {
             if (index !== activeIndex) {
@@ -77,17 +76,11 @@ const TabSlider: FC<TabSliderProps> = ({
         >
           {option.text}
           {/* if no plugin installed, the badge won't show */}
-          {option.value === 'plugins'
-            && (pluginList?.total ?? 0) > 0
-            && (
-              <Badge
-                size="s"
-                uppercase={true}
-                state={BadgeState.Default}
-              >
-                {pluginList?.total}
-              </Badge>
-            )}
+          {option.value === 'plugins' && (pluginList?.total ?? 0) > 0 && (
+            <Badge size="s" uppercase={true} state={BadgeState.Default}>
+              {pluginList?.total}
+            </Badge>
+          )}
         </div>
       ))}
     </div>

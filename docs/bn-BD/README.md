@@ -57,7 +57,11 @@
   <a href="../tr-TR/README.md"><img alt="Türkçe README" src="https://img.shields.io/badge/Türkçe-d9d9d9"></a>
   <a href="../vi-VN/README.md"><img alt="README Tiếng Việt" src="https://img.shields.io/badge/Ti%E1%BA%BFng%20Vi%E1%BB%87t-d9d9d9"></a>
   <a href="../de-DE/README.md"><img alt="README in Deutsch" src="https://img.shields.io/badge/German-d9d9d9"></a>
+  <a href="../it-IT/README.md"><img alt="README in Italiano" src="https://img.shields.io/badge/Italiano-d9d9d9"></a>
+  <a href="../pt-BR/README.md"><img alt="README em Português do Brasil" src="https://img.shields.io/badge/Portugu%C3%AAs%20do%20Brasil-d9d9d9"></a>
+  <a href="../sl-SI/README.md"><img alt="README Slovenščina" src="https://img.shields.io/badge/Sloven%C5%A1%C4%8Dina-d9d9d9"></a>
   <a href="../bn-BD/README.md"><img alt="README in বাংলা" src="https://img.shields.io/badge/বাংলা-d9d9d9"></a>
+  <a href="../hi-IN/README.md"><img alt="README in हिन्दी" src="https://img.shields.io/badge/Hindi-d9d9d9"></a>
 </p>
 
 ডিফাই একটি ওপেন-সোর্স LLM অ্যাপ ডেভেলপমেন্ট প্ল্যাটফর্ম। এটি ইন্টুইটিভ ইন্টারফেস, এজেন্টিক AI ওয়ার্কফ্লো, RAG পাইপলাইন, এজেন্ট ক্যাপাবিলিটি, মডেল ম্যানেজমেন্ট, মনিটরিং সুবিধা এবং আরও অনেক কিছু একত্রিত করে, যা দ্রুত প্রোটোটাইপ থেকে প্রোডাকশন পর্যন্ত নিয়ে যেতে সহায়তা করে।
@@ -124,8 +128,6 @@ LLM ফাংশন কলিং বা ReAct উপর ভিত্তি ক�
 
 - **এন্টারপ্রাইজ / প্রতিষ্ঠানের জন্য Dify</br>**
   আমরা এন্টারপ্রাইজ/প্রতিষ্ঠান-কেন্দ্রিক সেবা প্রদান করে থাকি । [এই চ্যাটবটের মাধ্যমে আপনার প্রশ্নগুলি আমাদের জন্য লগ করুন।](https://udify.app/chat/22L1zSxg6yW1cWQg) অথবা [আমাদের ইমেল পাঠান](mailto:business@dify.ai?subject=%5BGitHub%5DBusiness%20License%20Inquiry) আপনার চাহিদা সম্পর্কে আলোচনা করার জন্য। </br>
-
-  > AWS ব্যবহারকারী স্টার্টআপ এবং ছোট ব্যবসার জন্য, [AWS মার্কেটপ্লেসে Dify Premium](https://aws.amazon.com/marketplace/pp/prodview-t22mebxzwjhu6) দেখুন এবং এক-ক্লিকের মাধ্যমে এটি আপনার নিজস্ব AWS VPC-তে ডিপ্লয় করুন। এটি একটি সাশ্রয়ী মূল্যের AMI অফার, যাতে কাস্টম লোগো এবং ব্র্যান্ডিং সহ অ্যাপ তৈরির সুবিধা আছে।
 
 ## এগিয়ে থাকুন
 

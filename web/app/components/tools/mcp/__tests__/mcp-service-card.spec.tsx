@@ -1,20 +1,23 @@
 import type { ReactNode } from 'react'
 import type { AppDetailResponse } from '@/models/app'
 import type { AppSSO } from '@/types/app'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import * as React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { seedSystemFeatures } from '@/test/console/query-data'
+import { QueryClientTestProvider } from '@/test/console/query-provider'
 import { AppModeEnum } from '@/types/app'
 import MCPServiceCard from '../mcp-service-card'
 
 vi.mock('@/app/components/tools/mcp/mcp-server-modal', () => ({
-  default: ({ show, onHide }: { show: boolean, onHide: () => void }) => {
-    if (!show)
-      return null
+  default: ({ show, onHide }: { show: boolean; onHide: () => void }) => {
+    if (!show) return null
     return (
       <div data-testid="mcp-server-modal">
-        <button data-testid="close-modal-btn" onClick={onHide}>Close</button>
+        <button data-testid="close-modal-btn" onClick={onHide}>
+          Close
+        </button>
       </div>
     )
   },
@@ -26,6 +29,23 @@ const mockHandleGenCode = vi.fn()
 const mockOpenConfirmDelete = vi.fn()
 const mockCloseConfirmDelete = vi.fn()
 const mockOpenServerModal = vi.fn()
+const mockOnMcpServerUpdate = vi.hoisted(() => vi.fn())
+const mockUnsubscribeMcpServerUpdate = vi.hoisted(() => vi.fn())
+const invalidateMCPServerDetailFns = vi.hoisted(() => [] as Array<ReturnType<typeof vi.fn>>)
+
+vi.mock('@/app/components/workflow/collaboration/core/collaboration-manager', () => ({
+  collaborationManager: {
+    onMcpServerUpdate: mockOnMcpServerUpdate,
+  },
+}))
+
+vi.mock('@/service/use-tools', () => ({
+  useInvalidateMCPServerDetail: () => {
+    const invalidateFn = vi.fn()
+    invalidateMCPServerDetailFns.push(invalidateFn)
+    return invalidateFn
+  },
+}))
 
 type MockHookState = {
   genLoading: boolean
@@ -33,14 +53,16 @@ type MockHookState = {
   serverPublished: boolean
   serverActivated: boolean
   serverURL: string
-  detail: {
-    id: string
-    status: string
-    server_code: string
-    description: string
-    parameters: Record<string, unknown>
-  } | undefined
-  isCurrentWorkspaceManager: boolean
+  detail:
+    | {
+        id: string
+        status: string
+        server_code: string
+        description: string
+        parameters: Record<string, unknown>
+      }
+    | undefined
+  canManageMCP: boolean
   toggleDisabled: boolean
   isMinimalState: boolean
   appUnpublished: boolean
@@ -63,7 +85,7 @@ const createDefaultHookState = (overrides: Partial<MockHookState> = {}): MockHoo
     description: 'Test server',
     parameters: {},
   },
-  isCurrentWorkspaceManager: true,
+  canManageMCP: true,
   toggleDisabled: false,
   isMinimalState: false,
   appUnpublished: false,
@@ -93,25 +115,32 @@ describe('MCPServiceCard', () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
+    seedSystemFeatures(queryClient)
     return ({ children }: { children: ReactNode }) =>
-      React.createElement(QueryClientProvider, { client: queryClient }, children)
+      React.createElement(QueryClientTestProvider, { queryClient }, children)
   }
 
-  const createMockAppInfo = (mode: AppModeEnum = AppModeEnum.CHAT): AppDetailResponse & Partial<AppSSO> => ({
-    id: 'app-123',
-    name: 'Test App',
-    mode,
-    api_base_url: 'https://api.example.com/v1',
-  } as AppDetailResponse & Partial<AppSSO>)
+  const createMockAppInfo = (
+    mode: AppModeEnum = AppModeEnum.CHAT,
+  ): AppDetailResponse & Partial<AppSSO> =>
+    ({
+      id: 'app-123',
+      name: 'Test App',
+      mode,
+      api_base_url: 'https://api.example.com/v1',
+    }) as AppDetailResponse & Partial<AppSSO>
 
   beforeEach(() => {
     mockHookState = createDefaultHookState()
+    invalidateMCPServerDetailFns.length = 0
     mockHandleStatusChange.mockClear().mockResolvedValue({ activated: true })
     mockHandleServerModalHide.mockClear().mockReturnValue({ shouldDeactivate: false })
     mockHandleGenCode.mockClear()
     mockOpenConfirmDelete.mockClear()
     mockCloseConfirmDelete.mockClear()
     mockOpenServerModal.mockClear()
+    mockUnsubscribeMcpServerUpdate.mockClear()
+    mockOnMcpServerUpdate.mockReset().mockReturnValue(mockUnsubscribeMcpServerUpdate)
   })
 
   describe('Rendering', () => {
@@ -121,6 +150,30 @@ describe('MCPServiceCard', () => {
       expect(screen.getByText('tools.mcp.server.title')).toBeInTheDocument()
       expect(screen.getByText(/appOverview.overview.status/)).toBeInTheDocument()
       expect(screen.getByRole('switch')).toBeInTheDocument()
+    })
+
+    it('should keep status visible and disable management controls without app edit permission', () => {
+      mockHookState = createDefaultHookState({
+        canManageMCP: false,
+        toggleDisabled: true,
+      })
+
+      render(<MCPServiceCard appInfo={createMockAppInfo()} />, { wrapper: createWrapper() })
+
+      expect(screen.getByText('tools.mcp.server.title')).toBeInTheDocument()
+      expect(screen.getByText(/appOverview.overview.status/)).toBeInTheDocument()
+      expect(screen.getByText('https://api.example.com/mcp/server/abc123/mcp')).toBeInTheDocument()
+
+      const switchElement = screen.getByRole('switch')
+      expect(switchElement.className).toContain('cursor-not-allowed')
+
+      const editButton = screen.getByRole('button', { name: /tools\.mcp\.server\.edit/i })
+      expect(editButton).toBeDisabled()
+
+      const regenerateButton = screen.getByRole('button', {
+        name: /appOverview\.overview\.appInfo\.regenerate/i,
+      })
+      expect(regenerateButton).toBeDisabled()
     })
 
     it('should render edit button in full state', () => {
@@ -133,7 +186,9 @@ describe('MCPServiceCard', () => {
     it('should return null when isLoading is true', () => {
       mockHookState = createDefaultHookState({ isLoading: true })
 
-      const { container } = render(<MCPServiceCard appInfo={createMockAppInfo()} />, { wrapper: createWrapper() })
+      const { container } = render(<MCPServiceCard appInfo={createMockAppInfo()} />, {
+        wrapper: createWrapper(),
+      })
       expect(container.firstChild).toBeNull()
     })
 
@@ -232,7 +287,9 @@ describe('MCPServiceCard', () => {
       render(<MCPServiceCard appInfo={createMockAppInfo()} />, { wrapper: createWrapper() })
 
       expect(screen.getByText('tools.mcp.server.title')).toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /tools\.mcp\.server\.edit/i })).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /tools\.mcp\.server\.edit/i }),
+      ).not.toBeInTheDocument()
     })
 
     it('should open modal when enabling unpublished server', async () => {
@@ -366,7 +423,9 @@ describe('MCPServiceCard', () => {
         toggleDisabled: true,
       })
 
-      render(<MCPServiceCard appInfo={createMockAppInfo(AppModeEnum.WORKFLOW)} />, { wrapper: createWrapper() })
+      render(<MCPServiceCard appInfo={createMockAppInfo(AppModeEnum.WORKFLOW)} />, {
+        wrapper: createWrapper(),
+      })
 
       const switchElement = screen.getByRole('switch')
       expect(switchElement.className).toContain('cursor-not-allowed')
@@ -429,6 +488,32 @@ describe('MCPServiceCard', () => {
       render(<MCPServiceCard appInfo={createMockAppInfo()} />, { wrapper: createWrapper() })
 
       expect(screen.getByRole('switch')).toBeInTheDocument()
+    })
+  })
+
+  describe('Collaboration Sync', () => {
+    it('should keep a stable MCP update subscription across rerenders and invalidate with the latest callback', async () => {
+      let mcpUpdateHandler: ((payload: unknown) => void) | undefined
+      mockOnMcpServerUpdate.mockImplementation((handler: (payload: unknown) => void) => {
+        mcpUpdateHandler = handler
+        return mockUnsubscribeMcpServerUpdate
+      })
+
+      const wrapper = createWrapper()
+      const { rerender } = render(<MCPServiceCard appInfo={createMockAppInfo()} />, { wrapper })
+
+      rerender(<MCPServiceCard appInfo={createMockAppInfo()} />)
+
+      expect(mockOnMcpServerUpdate).toHaveBeenCalledTimes(1)
+      const latestInvalidateMCPServerDetail = invalidateMCPServerDetailFns.at(-1)
+      expect(latestInvalidateMCPServerDetail).toBeDefined()
+
+      mcpUpdateHandler?.({ type: 'mcp_server_update' })
+
+      invalidateMCPServerDetailFns
+        .slice(0, -1)
+        .forEach((invalidate) => expect(invalidate).not.toHaveBeenCalled())
+      expect(latestInvalidateMCPServerDetail).toHaveBeenCalledWith('app-123')
     })
   })
 })

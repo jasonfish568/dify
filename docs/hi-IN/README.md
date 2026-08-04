@@ -58,6 +58,8 @@
   <a href="../vi-VN/README.md"><img alt="README Tiếng Việt" src="https://img.shields.io/badge/Ti%E1%BA%BFng%20Vi%E1%BB%87t-d9d9d9"></a>
   <a href="../de-DE/README.md"><img alt="README in Deutsch" src="https://img.shields.io/badge/German-d9d9d9"></a>
   <a href="../it-IT/README.md"><img alt="README in Italiano" src="https://img.shields.io/badge/Italiano-d9d9d9"></a>
+  <a href="../pt-BR/README.md"><img alt="README em Português do Brasil" src="https://img.shields.io/badge/Portugu%C3%AAs%20do%20Brasil-d9d9d9"></a>
+  <a href="../sl-SI/README.md"><img alt="README Slovenščina" src="https://img.shields.io/badge/Sloven%C5%A1%C4%8Dina-d9d9d9"></a>
   <a href="../bn-BD/README.md"><img alt="README in বাংলা" src="https://img.shields.io/badge/বাংলা-d9d9d9"></a>
   <a href="../hi-IN/README.md"><img alt="README in हिन्दी" src="https://img.shields.io/badge/Hindi-d9d9d9"></a>
 </p>
@@ -73,7 +75,7 @@ Dify एक मुक्त-स्रोत प्लेटफ़ॉर्म �
 
 <br/>
 
-Dify सर्वर शुरू करने का सबसे आसान तरीका [Docker Compose](../..docker/docker-compose.yaml) के माध्यम से है। नीचे दिए गए कमांड्स से Dify चलाने से पहले, सुनिश्चित करें कि आपकी मशीन पर [Docker] (https://docs.docker.com/get-docker/) और [Docker Compose] (https://docs.docker.com/compose/install/) इंस्टॉल हैं।:
+Dify सर्वर शुरू करने का सबसे आसान तरीका [Docker Compose](../../docker/docker-compose.yaml) के माध्यम से है। नीचे दिए गए कमांड्स से Dify चलाने से पहले, सुनिश्चित करें कि आपकी मशीन पर [Docker] (https://docs.docker.com/get-docker/) और [Docker Compose] (https://docs.docker.com/compose/install/) इंस्टॉल हैं।:
 
 ```bash
 cd dify
@@ -127,8 +129,6 @@ Dify की सभी सेवाएँ संबंधित APIs के स�
 - **उद्यमों / संगठनों के लिए Dify<br/>**\
   हम अतिरिक्त एंटरप्राइज़-केंद्रित सुविधाएँ प्रदान करते हैं।\
   [इस चैटबॉट के माध्यम से हमें अपने प्रश्न भेजें](https://udify.app/chat/22L1zSxg6yW1cWQg) या [हमें ईमेल भेजें](mailto:business@dify.ai?subject=%5BGitHub%5DBusiness%20License%20Inquiry) ताकि हम एंटरप्राइज़ आवश्यकताओं पर चर्चा कर सकें। <br/>
-
-  > AWS का उपयोग करने वाले स्टार्टअप्स और छोटे व्यवसायों के लिए, [AWS Marketplace पर Dify Premium](https://aws.amazon.com/marketplace/pp/prodview-t22mebxzwjhu6) देखें और इसे एक क्लिक में अपने AWS VPC पर डिप्लॉय करें। यह एक किफायती AMI ऑफ़रिंग है, जो आपको कस्टम लोगो और ब्रांडिंग के साथ ऐप्स बनाने की अनुमति देती है।
 
 ## आगे बने रहें
 

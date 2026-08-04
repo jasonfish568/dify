@@ -1,34 +1,39 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import wraps
-from typing import Concatenate, ParamSpec, TypeVar
+from typing import Concatenate
 
 from flask import request
 from flask_restx import Resource
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import sessionmaker
 from werkzeug.exceptions import BadRequest, NotFound, Unauthorized
 
 from constants import HEADER_NAME_APP_CODE
 from controllers.web.error import WebAppAuthAccessDeniedError, WebAppAuthRequiredError
+from core.logging.context import set_identity_context
 from extensions.ext_database import db
 from libs.passport import PassportService
 from libs.token import extract_webapp_passport
 from models.model import App, EndUser, Site
 from services.app_service import AppService
-from services.enterprise.enterprise_service import EnterpriseService, WebAppSettings
+from services.enterprise.enterprise_service import EnterpriseService, WebAppAccessMode, WebAppSettings
 from services.feature_service import FeatureService
 from services.webapp_auth_service import WebAppAuthService
 
-P = ParamSpec("P")
-R = TypeVar("R")
 
-
-def validate_jwt_token(view: Callable[Concatenate[App, EndUser, P], R] | None = None):
-    def decorator(view: Callable[Concatenate[App, EndUser, P], R]):
+def validate_jwt_token[**P, R](
+    view: Callable[Concatenate[App, EndUser, P], R] | None = None,
+) -> Callable[P, R] | Callable[[Callable[Concatenate[App, EndUser, P], R]], Callable[P, R]]:
+    def decorator(view: Callable[Concatenate[App, EndUser, P], R]) -> Callable[P, R]:
         @wraps(view)
-        def decorated(*args: P.args, **kwargs: P.kwargs):
+        def decorated(*args: P.args, **kwargs: P.kwargs) -> R:
             app_model, end_user = decode_jwt_token()
+            set_identity_context(
+                tenant_id=end_user.tenant_id,
+                user_id=end_user.id,
+                user_type=end_user.type or "end_user",
+            )
             return view(app_model, end_user, *args, **kwargs)
 
         return decorated
@@ -38,7 +43,7 @@ def validate_jwt_token(view: Callable[Concatenate[App, EndUser, P], R] | None = 
     return decorator
 
 
-def decode_jwt_token(app_code: str | None = None, user_id: str | None = None):
+def decode_jwt_token(app_code: str | None = None, user_id: str | None = None) -> tuple[App, EndUser]:
     system_features = FeatureService.get_system_features()
     if not app_code:
         app_code = str(request.headers.get(HEADER_NAME_APP_CODE))
@@ -49,7 +54,7 @@ def decode_jwt_token(app_code: str | None = None, user_id: str | None = None):
         decoded = PassportService().verify(tk)
         app_code = decoded.get("app_code")
         app_id = decoded.get("app_id")
-        with Session(db.engine, expire_on_commit=False) as session:
+        with sessionmaker(db.engine, expire_on_commit=False).begin() as session:
             app_model = session.scalar(select(App).where(App.id == app_id))
             site = session.scalar(select(Site).where(Site.code == app_code))
             if not app_model:
@@ -71,11 +76,11 @@ def decode_jwt_token(app_code: str | None = None, user_id: str | None = None):
         app_web_auth_enabled = False
         webapp_settings = None
         if system_features.webapp_auth.enabled:
-            app_id = AppService.get_app_id_by_code(app_code)
+            app_id = AppService.get_app_id_by_code(app_code, session=db.session())
             webapp_settings = EnterpriseService.WebAppAuth.get_app_access_mode_by_id(app_id)
             if not webapp_settings:
                 raise NotFound("Web app settings not found.")
-            app_web_auth_enabled = webapp_settings.access_mode != "public"
+            app_web_auth_enabled = webapp_settings.access_mode != WebAppAccessMode.PUBLIC
 
         _validate_webapp_token(decoded, app_web_auth_enabled, system_features.webapp_auth.enabled)
         _validate_user_accessibility(
@@ -87,9 +92,10 @@ def decode_jwt_token(app_code: str | None = None, user_id: str | None = None):
         if system_features.webapp_auth.enabled:
             if not app_code:
                 raise Unauthorized("Please re-login to access the web app.")
-            app_id = AppService.get_app_id_by_code(app_code)
+            app_id = AppService.get_app_id_by_code(app_code, session=db.session())
             app_web_auth_enabled = (
-                EnterpriseService.WebAppAuth.get_app_access_mode_by_id(app_id=app_id).access_mode != "public"
+                EnterpriseService.WebAppAuth.get_app_access_mode_by_id(app_id=app_id).access_mode
+                != WebAppAccessMode.PUBLIC
             )
             if app_web_auth_enabled:
                 raise WebAppAuthRequiredError()
@@ -129,8 +135,10 @@ def _validate_user_accessibility(
         if not webapp_settings:
             raise WebAppAuthRequiredError("Web app settings not found.")
 
-        if WebAppAuthService.is_app_require_permission_check(access_mode=webapp_settings.access_mode):
-            app_id = AppService.get_app_id_by_code(app_code)
+        if WebAppAuthService.is_app_require_permission_check(
+            access_mode=webapp_settings.access_mode, session=db.session()
+        ):
+            app_id = AppService.get_app_id_by_code(app_code, session=db.session())
             if not EnterpriseService.WebAppAuth.is_user_allowed_to_access_webapp(user_id, app_id):
                 raise WebAppAuthAccessDeniedError()
 

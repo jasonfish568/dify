@@ -1,6 +1,6 @@
+import { cn } from '@langgenius/dify-ui/cn'
 import * as React from 'react'
 import { useCallback } from 'react'
-import { cn } from '@/utils/classnames'
 
 type TabProps<T> = {
   Icon: React.ComponentType<{ isActive: boolean }>
@@ -10,13 +10,7 @@ type TabProps<T> = {
   onClick: (value: T) => void
 }
 
-const Tab = <T,>({
-  Icon,
-  value,
-  label,
-  isActive,
-  onClick,
-}: TabProps<T>) => {
+const Tab = <T,>({ Icon, value, label, isActive, onClick }: TabProps<T>) => {
   const handleClick = useCallback(() => {
     onClick(value)
   }, [onClick, value])

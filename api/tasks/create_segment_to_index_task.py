@@ -3,6 +3,7 @@ import time
 
 import click
 from celery import shared_task
+from sqlalchemy import select, update
 
 from core.db.session_factory import session_factory
 from core.rag.index_processor.index_processor_factory import IndexProcessorFactory
@@ -27,7 +28,7 @@ def create_segment_to_index_task(segment_id: str, keywords: list[str] | None = N
     start_at = time.perf_counter()
 
     with session_factory.create_session() as session:
-        segment = session.query(DocumentSegment).where(DocumentSegment.id == segment_id).first()
+        segment = session.scalar(select(DocumentSegment).where(DocumentSegment.id == segment_id).limit(1))
         if not segment:
             logger.info(click.style(f"Segment not found: {segment_id}", fg="red"))
             return
@@ -39,11 +40,10 @@ def create_segment_to_index_task(segment_id: str, keywords: list[str] | None = N
 
         try:
             # update segment status to indexing
-            session.query(DocumentSegment).filter_by(id=segment.id).update(
-                {
-                    DocumentSegment.status: SegmentStatus.INDEXING,
-                    DocumentSegment.indexing_at: naive_utc_now(),
-                }
+            session.execute(
+                update(DocumentSegment)
+                .where(DocumentSegment.id == segment.id)
+                .values(status=SegmentStatus.INDEXING, indexing_at=naive_utc_now())
             )
             session.commit()
             document = Document(
@@ -56,13 +56,13 @@ def create_segment_to_index_task(segment_id: str, keywords: list[str] | None = N
                 },
             )
 
-            dataset = segment.dataset
+            dataset = segment.get_dataset(session=session)
 
             if not dataset:
                 logger.info(click.style(f"Segment {segment.id} has no dataset, pass.", fg="cyan"))
                 return
 
-            dataset_document = segment.document
+            dataset_document = segment.get_document(session=session)
 
             if not dataset_document:
                 logger.info(click.style(f"Segment {segment.id} has no document, pass.", fg="cyan"))
@@ -76,16 +76,15 @@ def create_segment_to_index_task(segment_id: str, keywords: list[str] | None = N
                 logger.info(click.style(f"Segment {segment.id} document status is invalid, pass.", fg="cyan"))
                 return
 
-            index_type = dataset.doc_form
+            index_type = dataset.get_doc_form(session=session)
             index_processor = IndexProcessorFactory(index_type).init_index_processor()
-            index_processor.load(dataset, [document])
+            index_processor.load(dataset, [document], session=session)
 
             # update segment to completed
-            session.query(DocumentSegment).filter_by(id=segment.id).update(
-                {
-                    DocumentSegment.status: SegmentStatus.COMPLETED,
-                    DocumentSegment.completed_at: naive_utc_now(),
-                }
+            session.execute(
+                update(DocumentSegment)
+                .where(DocumentSegment.id == segment.id)
+                .values(status=SegmentStatus.COMPLETED, completed_at=naive_utc_now())
             )
             session.commit()
 

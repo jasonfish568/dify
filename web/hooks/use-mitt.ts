@@ -2,15 +2,13 @@ import type { Emitter, EventType, Handler, WildcardHandler } from 'mitt'
 import create from 'mitt'
 import { useEffect, useRef } from 'react'
 
-const merge = <T extends Record<string, any>>(
-  ...args: Array<T | undefined>
-): T => {
+const merge = <T extends Record<string, any>>(...args: Array<T | undefined>): T => {
   return Object.assign({}, ...args)
 }
 
-export type _Events = Record<EventType, unknown>
+type _Events = Record<EventType, unknown>
 
-export type UseSubscribeOption = {
+type UseSubscribeOption = {
   /**
    * Whether the subscription is enabled.
    * @default true
@@ -18,20 +16,16 @@ export type UseSubscribeOption = {
   enabled: boolean
 }
 
-export type ExtendedOn<Events extends _Events> = {
+type ExtendedOn<Events extends _Events> = {
   <Key extends keyof Events>(
     type: Key,
     handler: Handler<Events[Key]>,
     options?: UseSubscribeOption,
   ): void
-  (
-    type: '*',
-    handler: WildcardHandler<Events>,
-    option?: UseSubscribeOption,
-  ): void
+  (type: '*', handler: WildcardHandler<Events>, option?: UseSubscribeOption): void
 }
 
-export type UseMittReturn<Events extends _Events> = {
+type UseMittReturn<Events extends _Events> = {
   useSubscribe: ExtendedOn<Events>
   emit: Emitter<Events>['emit']
 }
@@ -40,12 +34,9 @@ const defaultSubscribeOption: UseSubscribeOption = {
   enabled: true,
 }
 
-function useMitt<Events extends _Events>(
-  mitt?: Emitter<Events>,
-): UseMittReturn<Events> {
+function useMitt<Events extends _Events>(mitt?: Emitter<Events>): UseMittReturn<Events> {
   const emitterRef = useRef<Emitter<Events> | undefined>(undefined)
-  if (!emitterRef.current)
-    emitterRef.current = mitt ?? create<Events>()
+  if (!emitterRef.current) emitterRef.current = mitt ?? create<Events>()
 
   if (mitt && emitterRef.current !== mitt) {
     emitterRef.current.off('*')

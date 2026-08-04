@@ -7,17 +7,19 @@ document, and segment service test modules that exercise
 
 import json
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, Mock, create_autospec, patch
 
 import pytest
-from graphon.model_runtime.entities.model_entities import ModelFeature, ModelType
 from werkzeug.exceptions import Forbidden, NotFound
 
 from core.errors.error import LLMBadRequestError, ProviderTokenNotInitError
+from core.rag.entities import PreProcessingRule, Rule, Segmentation
 from core.rag.index_processor.constant.built_in_field import BuiltInField
 from core.rag.index_processor.constant.index_type import IndexStructureType
 from core.rag.retrieval.retrieval_methods import RetrievalMethod
 from enums.cloud_plan import CloudPlan
+from graphon.model_runtime.entities.model_entities import ModelFeature, ModelType
 from models import Account, TenantAccountRole
 from models.dataset import (
     ChildChunk,
@@ -44,12 +46,9 @@ from services.entities.knowledge_entities.knowledge_entities import (
     NotionIcon,
     NotionInfo,
     NotionPage,
-    PreProcessingRule,
     ProcessRule,
     RerankingModel,
     RetrievalModel,
-    Rule,
-    Segmentation,
     SegmentUpdateArgs,
     WebsiteInfo,
 )
@@ -168,7 +167,7 @@ class DatasetServiceUnitDataFactory:
         built_in_field_enabled: bool = False,
         doc_form: str | None = "text_model",
         enable_api: bool = False,
-        summary_index_setting: dict | None = None,
+        summary_index_setting: dict[str, Any] | None = None,
         **kwargs,
     ) -> Mock:
         dataset = Mock(spec=Dataset)
@@ -181,6 +180,7 @@ class DatasetServiceUnitDataFactory:
         dataset.embedding_model = embedding_model
         dataset.built_in_field_enabled = built_in_field_enabled
         dataset.doc_form = doc_form
+        dataset.get_doc_form.return_value = doc_form
         dataset.enable_api = enable_api
         dataset.updated_by = None
         dataset.updated_at = None
@@ -216,12 +216,12 @@ class DatasetServiceUnitDataFactory:
         archived: bool = False,
         enabled: bool = True,
         data_source_type: str = "upload_file",
-        data_source_info_dict: dict | None = None,
+        data_source_info_dict: dict[str, Any] | None = None,
         data_source_info: str | None = None,
         doc_form: str = "text_model",
         need_summary: bool = True,
         position: int = 0,
-        doc_metadata: dict | None = None,
+        doc_metadata: dict[str, Any] | None = None,
         name: str = "Document",
         **kwargs,
     ) -> Mock:
@@ -289,6 +289,7 @@ def _make_dataset(
     dataset.data_source_type = data_source_type
     dataset.indexing_technique = indexing_technique
     dataset.latest_process_rule = latest_process_rule
+    dataset.get_latest_process_rule.return_value = latest_process_rule
     dataset.embedding_model_provider = "provider"
     dataset.embedding_model = "embedding-model"
     dataset.summary_index_setting = None
@@ -366,7 +367,6 @@ def _make_segment(
 
 def _make_child_chunk() -> ChildChunk:
     return ChildChunk(
-        id="child-a",
         tenant_id="tenant-1",
         dataset_id="dataset-1",
         document_id="doc-1",

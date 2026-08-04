@@ -1,6 +1,6 @@
 import type { Credential, ModelProvider } from '../../../declarations'
+import { toast } from '@langgenius/dify-ui/toast'
 import { act, renderHook } from '@testing-library/react'
-import Toast from '@/app/components/base/toast'
 import { useActivateCredential } from '../use-activate-credential'
 
 const mockMutate = vi.fn()
@@ -20,30 +20,36 @@ vi.mock('../../../hooks', () => ({
   useUpdateModelList: () => mockUpdateModelList,
 }))
 
-const createProvider = (overrides: Partial<ModelProvider> = {}): ModelProvider => ({
-  provider: 'langgenius/openai/openai',
-  supported_model_types: ['llm', 'text-embedding'],
-  custom_configuration: {
-    current_credential_id: 'cred-1',
-    available_credentials: [
-      { credential_id: 'cred-1', credential_name: 'Primary' },
-      { credential_id: 'cred-2', credential_name: 'Backup' },
-    ],
-  },
-  ...overrides,
-} as unknown as ModelProvider)
+const createProvider = (overrides: Partial<ModelProvider> = {}): ModelProvider =>
+  ({
+    provider: 'langgenius/openai/openai',
+    supported_model_types: ['llm', 'text-embedding'],
+    custom_configuration: {
+      current_credential_id: 'cred-1',
+      available_credentials: [
+        { credential_id: 'cred-1', credential_name: 'Primary' },
+        { credential_id: 'cred-2', credential_name: 'Backup' },
+      ],
+    },
+    ...overrides,
+  }) as unknown as ModelProvider
 
-const createCredential = (overrides: Partial<Credential> = {}): Credential => ({
-  credential_id: 'cred-2',
-  credential_name: 'Backup',
-  ...overrides,
-} as Credential)
+const createCredential = (overrides: Partial<Credential> = {}): Credential =>
+  ({
+    credential_id: 'cred-2',
+    credential_name: 'Backup',
+    ...overrides,
+  }) as Credential
 
 describe('useActivateCredential', () => {
+  const toastSuccessSpy = vi.spyOn(toast, 'success').mockReturnValue('toast-success')
+  const toastErrorSpy = vi.spyOn(toast, 'error').mockReturnValue('toast-error')
+
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsPending = false
-    vi.spyOn(Toast, 'notify').mockImplementation(() => ({ clear: vi.fn() }))
+    toastSuccessSpy.mockClear()
+    toastErrorSpy.mockClear()
   })
 
   it('should expose the current credential id by default', () => {
@@ -88,16 +94,13 @@ describe('useActivateCredential', () => {
       }),
     )
 
-    const [, callbacks] = mockMutate.mock.calls[0]
+    const [, callbacks] = (mockMutate.mock.calls[0] ?? []) as [unknown, any]
 
     act(() => {
       callbacks.onSuccess()
     })
 
-    expect(Toast.notify).toHaveBeenCalledWith({
-      type: 'success',
-      message: 'common.api.actionSuccess',
-    })
+    expect(toastSuccessSpy).toHaveBeenCalledWith('common.api.actionSuccess')
     expect(mockUpdateModelProviders).toHaveBeenCalledTimes(1)
     expect(mockUpdateModelList).toHaveBeenNthCalledWith(1, 'llm')
     expect(mockUpdateModelList).toHaveBeenNthCalledWith(2, 'text-embedding')
@@ -112,16 +115,13 @@ describe('useActivateCredential', () => {
 
     expect(result.current.selectedCredentialId).toBe('cred-2')
 
-    const [, callbacks] = mockMutate.mock.calls[0]
+    const [, callbacks] = (mockMutate.mock.calls[0] ?? []) as [unknown, any]
 
     act(() => {
       callbacks.onError()
     })
 
     expect(result.current.selectedCredentialId).toBe('cred-1')
-    expect(Toast.notify).toHaveBeenCalledWith({
-      type: 'error',
-      message: 'common.actionMsg.modifiedUnsuccessfully',
-    })
+    expect(toastErrorSpy).toHaveBeenCalledWith('common.actionMsg.modifiedUnsuccessfully')
   })
 })

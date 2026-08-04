@@ -4,11 +4,11 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
-from graphon.file import File, FileTransferMethod, FileType
 
 from core.workflow.file_reference import build_file_reference
 from fields import conversation_fields, message_fields
 from fields.file_fields import FileResponse, FileWithSignedUrl, RemoteFileInfo, UploadConfig
+from graphon.file import File, FileTransferMethod, FileType
 
 
 def test_file_response_serializes_datetime() -> None:
@@ -72,15 +72,17 @@ def test_remote_file_info_and_upload_config() -> None:
         image_file_size_limit=4,
         video_file_size_limit=5,
         audio_file_size_limit=6,
-        workflow_file_upload_limit=7,
-        image_file_batch_limit=8,
-        single_chunk_attachment_limit=9,
-        attachment_image_file_size_limit=10,
+        skill_file_size_limit=7,
+        workflow_file_upload_limit=8,
+        image_file_batch_limit=9,
+        single_chunk_attachment_limit=10,
+        attachment_image_file_size_limit=11,
     )
 
     dumped = config.model_dump(mode="json")
     assert dumped["file_upload_limit"] == 3
-    assert dumped["attachment_image_file_size_limit"] == 10
+    assert dumped["skill_file_size_limit"] == 7
+    assert dumped["attachment_image_file_size_limit"] == 11
 
 
 @pytest.mark.parametrize(
@@ -95,7 +97,7 @@ def test_file_formatters_preserve_legacy_file_keys(monkeypatch: pytest.MonkeyPat
     reference = build_file_reference(record_id="upload-1", storage_key="files/source.pdf")
 
     file = File(
-        type=FileType.DOCUMENT,
+        file_type=FileType.DOCUMENT,
         transfer_method=FileTransferMethod.LOCAL_FILE,
         remote_url="https://storage.example/source.pdf",
         reference=reference,

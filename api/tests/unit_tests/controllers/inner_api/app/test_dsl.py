@@ -6,7 +6,7 @@ in test_auth_wraps.py; handler tests use inspect.unwrap() to bypass them.
 """
 
 import inspect
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 from flask import Flask
@@ -18,7 +18,8 @@ from controllers.inner_api.app.dsl import (
     InnerAppDSLImportPayload,
     _get_active_account,
 )
-from services.app_dsl_service import ImportStatus
+from models.account import AccountStatus
+from services.app_dsl_service import Import, ImportStatus
 
 
 class TestInnerAppDSLImportPayload:
@@ -63,7 +64,7 @@ class TestGetActiveAccount:
     @patch("controllers.inner_api.app.dsl.db")
     def test_returns_active_account(self, mock_db):
         mock_account = MagicMock()
-        mock_account.status = "active"
+        mock_account.status = AccountStatus.ACTIVE
         mock_db.session.scalar.return_value = mock_account
 
         result = _get_active_account("user@example.com")
@@ -74,7 +75,7 @@ class TestGetActiveAccount:
     @patch("controllers.inner_api.app.dsl.db")
     def test_returns_none_for_inactive_account(self, mock_db):
         mock_account = MagicMock()
-        mock_account.status = "banned"
+        mock_account.status = AccountStatus.BANNED
         mock_db.session.scalar.return_value = mock_account
 
         result = _get_active_account("banned@example.com")
@@ -103,20 +104,20 @@ class TestEnterpriseAppDSLImport:
     @pytest.fixture
     def _mock_import_deps(self):
         """Patch db, Session, and AppDslService for import handler tests."""
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
         with (
             patch("controllers.inner_api.app.dsl.db"),
-            patch("controllers.inner_api.app.dsl.Session") as mock_session,
+            patch("controllers.inner_api.app.dsl.Session", return_value=mock_session),
             patch("controllers.inner_api.app.dsl.AppDslService") as mock_dsl_cls,
         ):
-            mock_session.return_value.__enter__ = MagicMock(return_value=MagicMock())
-            mock_session.return_value.__exit__ = MagicMock(return_value=False)
+            self._mock_session = mock_session
             self._mock_dsl = MagicMock()
             mock_dsl_cls.return_value = self._mock_dsl
             yield
 
-    def _make_import_result(self, status: ImportStatus, **kwargs) -> "Import":
-        from services.app_dsl_service import Import
-
+    def _make_import_result(self, status: ImportStatus, **kwargs) -> Import:
         result = Import(
             id="import-id",
             status=status,
@@ -144,7 +145,9 @@ class TestEnterpriseAppDSLImport:
         body, status_code = result
         assert status_code == 200
         assert body["status"] == "completed"
-        mock_account.set_tenant_id.assert_called_once_with("ws-123")
+        mock_account.set_tenant_id_with_session.assert_called_once_with("ws-123", session=self._mock_session)
+        self._mock_session.commit.assert_called_once_with()
+        self._mock_session.rollback.assert_not_called()
 
     @pytest.mark.usefixtures("_mock_import_deps")
     @patch("controllers.inner_api.app.dsl._get_active_account")
@@ -160,6 +163,8 @@ class TestEnterpriseAppDSLImport:
 
         assert status_code == 202
         assert body["status"] == "pending"
+        self._mock_session.commit.assert_called_once_with()
+        self._mock_session.rollback.assert_not_called()
 
     @pytest.mark.usefixtures("_mock_import_deps")
     @patch("controllers.inner_api.app.dsl._get_active_account")
@@ -175,6 +180,8 @@ class TestEnterpriseAppDSLImport:
 
         assert status_code == 400
         assert body["status"] == "failed"
+        self._mock_session.rollback.assert_called_once_with()
+        self._mock_session.commit.assert_not_called()
 
     @patch("controllers.inner_api.app.dsl._get_active_account")
     def test_import_account_not_found_returns_404(self, mock_get_account, api_instance, app: Flask):
@@ -215,7 +222,7 @@ class TestEnterpriseAppDSLExport:
         body, status_code = result
         assert status_code == 200
         assert body["data"] == "version: 0.6.0\nkind: app\n"
-        mock_dsl_cls.export_dsl.assert_called_once_with(app_model=mock_app, include_secret=False)
+        mock_dsl_cls.export_dsl.assert_called_once_with(app_model=mock_app, session=ANY, include_secret=False)
 
     @patch("controllers.inner_api.app.dsl.AppDslService")
     @patch("controllers.inner_api.app.dsl.db")
@@ -230,7 +237,7 @@ class TestEnterpriseAppDSLExport:
 
         body, status_code = result
         assert status_code == 200
-        mock_dsl_cls.export_dsl.assert_called_once_with(app_model=mock_app, include_secret=True)
+        mock_dsl_cls.export_dsl.assert_called_once_with(app_model=mock_app, session=ANY, include_secret=True)
 
     @patch("controllers.inner_api.app.dsl.db")
     def test_export_app_not_found_returns_404(self, mock_db, api_instance, app: Flask):

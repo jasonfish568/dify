@@ -18,7 +18,8 @@ from controllers.inner_api.wraps import enterprise_inner_api_only
 from extensions.ext_database import db
 from models import Account, App
 from models.account import AccountStatus
-from services.app_dsl_service import AppDslService, ImportMode, ImportStatus
+from services.app_dsl_service import AppDslService
+from services.entities.dsl_entities import ImportMode, ImportStatus
 
 
 class InnerAppDSLImportPayload(BaseModel):
@@ -53,9 +54,8 @@ class EnterpriseAppDSLImport(Resource):
         if account is None:
             return {"message": f"account '{args.creator_email}' not found or inactive"}, 404
 
-        account.set_tenant_id(workspace_id)
-
-        with Session(db.engine) as session:
+        with Session(db.engine, expire_on_commit=False) as session:
+            account.set_tenant_id_with_session(workspace_id, session=session)
             dsl_service = AppDslService(session)
             result = dsl_service.import_app(
                 account=account,
@@ -64,7 +64,10 @@ class EnterpriseAppDSLImport(Resource):
                 name=args.name,
                 description=args.description,
             )
-            session.commit()
+            if result.status == ImportStatus.FAILED:
+                session.rollback()
+            else:
+                session.commit()
 
         if result.status == ImportStatus.FAILED:
             return result.model_dump(mode="json"), 400
@@ -94,6 +97,7 @@ class EnterpriseAppDSLExport(Resource):
 
         data = AppDslService.export_dsl(
             app_model=app_model,
+            session=db.session(),
             include_secret=include_secret,
         )
 

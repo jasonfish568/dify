@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import { useContext } from 'react'
+import { use } from 'react'
 import { HooksStoreContext, HooksStoreContextProvider } from '../provider'
 
 const mockRefreshAll = vi.fn()
@@ -15,7 +15,8 @@ let mockReactflowState = {
 }
 
 vi.mock('reactflow', () => ({
-  useStore: (selector: (state: typeof mockReactflowState) => unknown) => selector(mockReactflowState),
+  useStore: (selector: (state: typeof mockReactflowState) => unknown) =>
+    selector(mockReactflowState),
 }))
 
 vi.mock('../store', async () => {
@@ -27,7 +28,7 @@ vi.mock('../store', async () => {
 })
 
 const Consumer = () => {
-  const store = useContext(HooksStoreContext)
+  const store = use(HooksStoreContext)
   return <div>{store ? 'has-hooks-store' : 'missing-hooks-store'}</div>
 }
 

@@ -57,16 +57,16 @@ vi.mock('../../hooks/use-nodes-interactions', () => ({
   }),
 }))
 
-vi.mock('../../hooks', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../hooks')>()
-  return {
-    ...actual,
-    useNodesInteractions: () => ({
-      handleNodeSelect: mockHandleNodeSelect,
-    }),
-    useToolIcon: () => '',
-  }
-})
+vi.mock('../../hooks/use-nodes-interactions', () => ({
+  useNodesInteractions: () => ({
+    handleNodeSelect: mockHandleNodeSelect,
+  }),
+}))
+
+vi.mock('../../hooks/use-tool-icon', () => ({
+  useToolIcon: () => '',
+  useGetToolIcon: () => () => '',
+}))
 
 vi.mock('../../nodes/_base/hooks/use-node-crud', () => ({
   default: () => ({
@@ -97,7 +97,9 @@ vi.mock('@/context/event-emitter', () => ({
   }),
 }))
 
-const createEnvironmentVariable = (overrides: Partial<EnvironmentVariable> = {}): EnvironmentVariable => ({
+const createEnvironmentVariable = (
+  overrides: Partial<EnvironmentVariable> = {},
+): EnvironmentVariable => ({
   id: 'env-1',
   name: 'API_KEY',
   value: 'env-value',
@@ -107,18 +109,15 @@ const createEnvironmentVariable = (overrides: Partial<EnvironmentVariable> = {})
 })
 
 const renderPanel = (initialStoreState: Record<string, unknown> = {}) => {
-  return renderWorkflowFlowComponent(
-    <Panel />,
-    {
+  return renderWorkflowFlowComponent(<Panel />, {
+    nodes: [],
+    edges: [],
+    initialStoreState,
+    historyStore: {
       nodes: [],
       edges: [],
-      initialStoreState,
-      historyStore: {
-        nodes: [],
-        edges: [],
-      },
     },
-  )
+  })
 }
 
 describe('VariableInspect Panel', () => {
@@ -137,9 +136,11 @@ describe('VariableInspect Panel', () => {
       listeningTriggerType: BlockEnum.TriggerWebhook,
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'workflow.debug.variableInspect.listening.stopButton' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'workflow.debug.variableInspect.listening.stopButton' }),
+    )
 
-    expect(screen.getByText('workflow.debug.variableInspect.listening.title')).toBeInTheDocument()
+    expect(screen.getByText('workflow.debug.variableInspect.listening.title'))!.toBeInTheDocument()
     expect(mockEmit).toHaveBeenCalledWith({
       type: EVENT_WORKFLOW_STOP,
     })
@@ -150,9 +151,9 @@ describe('VariableInspect Panel', () => {
       showVariableInspectPanel: true,
     })
 
-    fireEvent.click(screen.getAllByRole('button')[0])
+    fireEvent.click(screen.getAllByRole('button')[0]!)
 
-    expect(screen.getByText('workflow.debug.variableInspect.emptyTip')).toBeInTheDocument()
+    expect(screen.getByText('workflow.debug.variableInspect.emptyTip'))!.toBeInTheDocument()
     expect(store.getState().showVariableInspectPanel).toBe(false)
   })
 
@@ -166,8 +167,8 @@ describe('VariableInspect Panel', () => {
 
     await waitFor(() => expect(screen.getAllByText('API_KEY').length).toBeGreaterThan(1))
 
-    expect(screen.getByText('workflow.debug.variableInspect.envNode')).toBeInTheDocument()
+    expect(screen.getByText('workflow.debug.variableInspect.envNode'))!.toBeInTheDocument()
     expect(screen.getAllByText('string').length).toBeGreaterThan(0)
-    expect(screen.getByText('env-value')).toBeInTheDocument()
+    expect(screen.getByText('env-value'))!.toBeInTheDocument()
   })
 })

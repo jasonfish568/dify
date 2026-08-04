@@ -21,39 +21,30 @@ vi.mock('uuid', () => ({
 }))
 
 vi.mock('ahooks', () => ({
-  useBoolean: (initialValue: boolean) => {
-    let current = initialValue
-    return [
-      current,
-      {
-        setTrue: () => {
-          current = true
-        },
-        setFalse: () => {
-          current = false
-        },
-      },
-    ] as const
-  },
   useDebounceFn: (fn: (...args: unknown[]) => void) => ({
     run: fn,
   }),
 }))
 
-vi.mock('@/app/components/workflow/hooks', () => ({
-  useNodesReadOnly: () => ({ nodesReadOnly: false }),
-  useWorkflow: () => ({
-    handleOutVarRenameChange: (...args: unknown[]) => mockHandleOutVarRenameChange(...args),
-    isVarUsedInNodes: (...args: unknown[]) => mockIsVarUsedInNodes(...args),
-    removeUsedVarInNodes: (...args: unknown[]) => mockRemoveUsedVarInNodes(...args),
-  }),
-}))
+vi.mock('../../../hooks/use-workflow', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../hooks/use-workflow')>()
+
+  return {
+    ...actual,
+    useNodesReadOnly: () => ({ nodesReadOnly: false }),
+    useWorkflow: () => ({
+      handleOutVarRenameChange: (...args: unknown[]) => mockHandleOutVarRenameChange(...args),
+      isVarUsedInNodes: (...args: unknown[]) => mockIsVarUsedInNodes(...args),
+      removeUsedVarInNodes: (...args: unknown[]) => mockRemoveUsedVarInNodes(...args),
+    }),
+  }
+})
 
 vi.mock('@/app/components/workflow/nodes/_base/hooks/use-node-crud', () => ({
   ...createNodeCrudModuleMock<VariableAssignerNodeType>(mockSetInputs),
 }))
 
-vi.mock('@/app/components/workflow/hooks/use-inspect-vars-crud', () => ({
+vi.mock('../../../hooks/use-inspect-vars-crud', () => ({
   __esModule: true,
   default: () => ({
     deleteNodeInspectorVars: (...args: unknown[]) => mockDeleteNodeInspectorVars(...args),
@@ -65,7 +56,9 @@ vi.mock('../hooks', () => ({
   useGetAvailableVars: () => mockGetAvailableVars,
 }))
 
-const createPayload = (overrides: Partial<VariableAssignerNodeType> = {}): VariableAssignerNodeType => ({
+const createPayload = (
+  overrides: Partial<VariableAssignerNodeType> = {},
+): VariableAssignerNodeType => ({
   title: 'Variable Assigner',
   desc: '',
   type: BlockEnum.VariableAssigner,
@@ -91,21 +84,20 @@ const createPayload = (overrides: Partial<VariableAssignerNodeType> = {}): Varia
   ...overrides,
 })
 
+const createPayloadWithoutAdvancedSettings = (): VariableAssignerNodeType => {
+  const payload = createPayload() as Omit<VariableAssignerNodeType, 'advanced_settings'> & {
+    advanced_settings?: VariableAssignerNodeType['advanced_settings']
+  }
+  delete payload.advanced_settings
+
+  return payload as VariableAssignerNodeType
+}
+
 describe('useConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetAvailableVars.mockReturnValue([])
     mockIsVarUsedInNodes.mockReturnValue(false)
-  })
-
-  it('should expose read-only state, group mode and typed variable filters', () => {
-    const { result } = renderHook(() => useConfig('assigner-node', createPayload()))
-
-    expect(result.current.readOnly).toBe(false)
-    expect(result.current.isEnableGroup).toBe(true)
-    expect(result.current.filterVar(VarType.string)({ type: VarType.any } as never)).toBe(true)
-    expect(result.current.filterVar(VarType.number)({ type: VarType.string } as never)).toBe(false)
-    expect(result.current.getAvailableVars).toBe(mockGetAvailableVars)
   })
 
   it('should update root and grouped variable payloads', () => {
@@ -120,22 +112,26 @@ describe('useConfig', () => {
       variables: [['source-node', 'groupVar']],
     })
 
-    expect(mockSetInputs).toHaveBeenCalledWith(expect.objectContaining({
-      output_type: VarType.number,
-      variables: [['source-node', 'changed']],
-    }))
-    expect(mockSetInputs).toHaveBeenCalledWith(expect.objectContaining({
-      advanced_settings: expect.objectContaining({
-        groups: [
-          expect.objectContaining({
-            groupId: 'group-1',
-            output_type: VarType.boolean,
-            variables: [['source-node', 'groupVar']],
-          }),
-          expect.anything(),
-        ],
+    expect(mockSetInputs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        output_type: VarType.number,
+        variables: [['source-node', 'changed']],
       }),
-    }))
+    )
+    expect(mockSetInputs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        advanced_settings: expect.objectContaining({
+          groups: [
+            expect.objectContaining({
+              groupId: 'group-1',
+              output_type: VarType.boolean,
+              variables: [['source-node', 'groupVar']],
+            }),
+            expect.anything(),
+          ],
+        }),
+      }),
+    )
   })
 
   it('should add and remove groups and toggle group mode', () => {
@@ -145,30 +141,34 @@ describe('useConfig', () => {
     result.current.handleGroupRemoved('group-2')()
     result.current.handleGroupEnabledChange(false)
 
-    expect(mockSetInputs).toHaveBeenCalledWith(expect.objectContaining({
-      advanced_settings: expect.objectContaining({
-        groups: expect.arrayContaining([
-          expect.objectContaining({
-            groupId: 'generated-group-id',
-            group_name: 'Group3',
-          }),
-        ]),
+    expect(mockSetInputs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        advanced_settings: expect.objectContaining({
+          groups: expect.arrayContaining([
+            expect.objectContaining({
+              groupId: 'generated-group-id',
+              group_name: 'Group3',
+            }),
+          ]),
+        }),
       }),
-    }))
-    expect(mockSetInputs).toHaveBeenCalledWith(expect.objectContaining({
-      advanced_settings: expect.objectContaining({
-        groups: [
-          expect.objectContaining({ groupId: 'group-1' }),
-        ],
+    )
+    expect(mockSetInputs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        advanced_settings: expect.objectContaining({
+          groups: [expect.objectContaining({ groupId: 'group-1' })],
+        }),
       }),
-    }))
-    expect(mockSetInputs).toHaveBeenCalledWith(expect.objectContaining({
-      advanced_settings: expect.objectContaining({
-        group_enabled: false,
+    )
+    expect(mockSetInputs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        advanced_settings: expect.objectContaining({
+          group_enabled: false,
+        }),
+        output_type: VarType.string,
+        variables: [['source-node', 'initialVar']],
       }),
-      output_type: VarType.string,
-      variables: [['source-node', 'initialVar']],
-    }))
+    )
     expect(mockDeleteNodeInspectorVars).toHaveBeenCalledWith('assigner-node')
     expect(mockHandleOutVarRenameChange).toHaveBeenCalledWith(
       'assigner-node',
@@ -183,17 +183,19 @@ describe('useConfig', () => {
     result.current.handleVarGroupNameChange('group-1')('Renamed')
     result.current.onRemoveVarConfirm()
 
-    expect(mockSetInputs).toHaveBeenCalledWith(expect.objectContaining({
-      advanced_settings: expect.objectContaining({
-        groups: [
-          expect.objectContaining({
-            groupId: 'group-1',
-            group_name: 'Renamed',
-          }),
-          expect.anything(),
-        ],
+    expect(mockSetInputs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        advanced_settings: expect.objectContaining({
+          groups: [
+            expect.objectContaining({
+              groupId: 'group-1',
+              group_name: 'Renamed',
+            }),
+            expect.anything(),
+          ],
+        }),
       }),
-    }))
+    )
     expect(mockHandleOutVarRenameChange).toHaveBeenCalledWith(
       'assigner-node',
       ['assigner-node', 'Group1', 'output'],
@@ -203,7 +205,7 @@ describe('useConfig', () => {
   })
 
   it('should confirm removing a used group before deleting it', () => {
-    mockIsVarUsedInNodes.mockImplementation(selector => selector[1] === 'Group2')
+    mockIsVarUsedInNodes.mockImplementation((selector) => selector[1] === 'Group2')
     const { result } = renderHook(() => useConfig('assigner-node', createPayload()))
 
     act(() => {
@@ -214,20 +216,27 @@ describe('useConfig', () => {
     })
 
     expect(mockRemoveUsedVarInNodes).toHaveBeenCalledWith(['assigner-node', 'Group2', 'output'])
-    expect(mockSetInputs).toHaveBeenCalledWith(expect.objectContaining({
-      advanced_settings: expect.objectContaining({
-        groups: [expect.objectContaining({ groupId: 'group-1' })],
+    expect(mockSetInputs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        advanced_settings: expect.objectContaining({
+          groups: [expect.objectContaining({ groupId: 'group-1' })],
+        }),
       }),
-    }))
+    )
   })
 
   it('should enable empty groups and confirm disabling when downstream vars are used', () => {
-    const { result: enableResult } = renderHook(() => useConfig('assigner-node', createPayload({
-      advanced_settings: {
-        group_enabled: false,
-        groups: [],
-      },
-    })))
+    const { result: enableResult } = renderHook(() =>
+      useConfig(
+        'assigner-node',
+        createPayload({
+          advanced_settings: {
+            group_enabled: false,
+            groups: [],
+          },
+        }),
+      ),
+    )
 
     enableResult.current.handleGroupEnabledChange(true)
 
@@ -237,7 +246,7 @@ describe('useConfig', () => {
       ['assigner-node', 'Group1', 'output'],
     )
 
-    mockIsVarUsedInNodes.mockImplementation(selector => selector[1] === 'Group2')
+    mockIsVarUsedInNodes.mockImplementation((selector) => selector[1] === 'Group2')
     const { result } = renderHook(() => useConfig('assigner-node', createPayload()))
 
     act(() => {
@@ -248,8 +257,35 @@ describe('useConfig', () => {
     })
 
     expect(mockRemoveUsedVarInNodes).toHaveBeenCalledWith(['assigner-node', 'Group2', 'output'])
-    expect(mockSetInputs).toHaveBeenCalledWith(expect.objectContaining({
-      advanced_settings: expect.objectContaining({ group_enabled: false }),
-    }))
+    expect(mockSetInputs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        advanced_settings: expect.objectContaining({ group_enabled: false }),
+      }),
+    )
+  })
+
+  it('should not throw when enabling groups with missing advanced settings', () => {
+    const { result } = renderHook(() =>
+      useConfig('assigner-node', createPayloadWithoutAdvancedSettings()),
+    )
+
+    expect(() => {
+      result.current.handleGroupEnabledChange(true)
+    }).not.toThrow()
+
+    expect(mockHandleOutVarRenameChange).toHaveBeenCalledWith(
+      'assigner-node',
+      ['assigner-node', 'output'],
+      ['assigner-node', 'Group1', 'output'],
+    )
+    expect(mockSetInputs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        advanced_settings: expect.objectContaining({
+          group_enabled: true,
+          groups: [expect.objectContaining({ group_name: 'Group1' })],
+        }),
+      }),
+    )
+    expect(mockDeleteNodeInspectorVars).toHaveBeenCalledWith('assigner-node')
   })
 })

@@ -12,7 +12,11 @@ let mockAnnotatedResponseUsage = 5
 vi.mock('@/context/provider-context', () => ({
   useProviderContext: () => ({
     plan: {
-      usage: { get annotatedResponse() { return mockAnnotatedResponseUsage } },
+      usage: {
+        get annotatedResponse() {
+          return mockAnnotatedResponseUsage
+        },
+      },
       total: { annotatedResponse: 100 },
     },
     enableBilling: true,
@@ -28,8 +32,14 @@ vi.mock('@/service/annotation', () => ({
   addAnnotation: (...args: unknown[]) => mockAddAnnotation(...args),
 }))
 
-vi.mock('@/app/components/base/toast', () => ({
+vi.mock('@langgenius/dify-ui/toast', () => ({
   default: { notify: vi.fn() },
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    info: vi.fn(),
+  },
 }))
 
 describe('AnnotationCtrlButton', () => {
