@@ -1,51 +1,44 @@
-import { defaultShouldDehydrateQuery, dehydrate, HydrationBoundary } from '@tanstack/react-query'
+import { dehydrate, HydrationBoundary, noop } from '@tanstack/react-query'
 import { Suspense } from 'react'
-import { getQueryClientServer, makeQueryClient } from '@/context/query-client-server'
-import { getLocaleOnServer } from '@/i18n-config/server'
-import { getServerConsoleClientContext, serverConsoleQuery } from '@/service/server'
+import { getQueryClient } from '@/app/get-query-client'
+import { getOptionalSystemFeatures } from '@/features/system-features/server'
+import { getLocaleOnServer } from '@/i18n/server'
+import { consoleQuery } from '@/service/console'
 import { HomeContent } from './home-content/home-content'
 import { HomeShell } from './home-shell'
 import { HomeSkeleton } from './home-skeleton'
 
 export async function HomePage() {
-  const homeQueryClient = makeQueryClient()
-  const [locale, context] = await Promise.all([
-    getLocaleOnServer(),
-    getServerConsoleClientContext(),
-  ])
+  const homeQueryClient = getQueryClient()
+  const locale = await getLocaleOnServer()
 
-  void homeQueryClient.prefetchQuery(
-    serverConsoleQuery.explore.apps.get.queryOptions({
-      context,
-      input: { query: { language: locale } },
-    }),
-  )
-  void homeQueryClient.prefetchQuery(
-    serverConsoleQuery.apps.recent.get.queryOptions({
-      context,
-      input: { query: { limit: 8 } },
-    }),
-  )
-
-  const enableExploreBanner = (
-    await getQueryClientServer().ensureQueryData(
-      serverConsoleQuery.systemFeatures.get.queryOptions(),
-    )
-  ).enable_explore_banner
-  if (enableExploreBanner) {
-    void homeQueryClient.prefetchQuery(
-      serverConsoleQuery.explore.banners.get.queryOptions({
-        context,
+  void homeQueryClient
+    .query(
+      consoleQuery.explore.apps.get.queryOptions({
         input: { query: { language: locale } },
       }),
     )
+    .catch(noop)
+  void homeQueryClient
+    .query(
+      consoleQuery.apps.recent.get.queryOptions({
+        input: { query: { limit: 8 } },
+      }),
+    )
+    .catch(noop)
+
+  const enableExploreBanner = (await getOptionalSystemFeatures())?.enable_explore_banner ?? false
+  if (enableExploreBanner) {
+    void homeQueryClient
+      .query(
+        consoleQuery.explore.banners.get.queryOptions({
+          input: { query: { language: locale } },
+        }),
+      )
+      .catch(noop)
   }
 
-  const dehydratedState = dehydrate(homeQueryClient, {
-    shouldDehydrateQuery: (query) =>
-      defaultShouldDehydrateQuery(query) || query.state.status === 'pending',
-    shouldRedactErrors: () => false,
-  })
+  const dehydratedState = dehydrate(homeQueryClient)
 
   return (
     <HydrationBoundary state={dehydratedState}>

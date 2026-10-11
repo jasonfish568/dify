@@ -8,12 +8,12 @@ import { TabType } from '@/app/components/workflow/block-selector/types'
 import { useReplaceDataSourceNode } from './hooks'
 
 const DataSourceEmptyNode = ({ id, data }: NodeProps) => {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['workflow'])
   const { handleReplaceNode } = useReplaceDataSourceNode(id)
 
   const triggerElement = (
     <Button variant="primary" className="w-full">
-      <span aria-hidden className="mr-1 i-ri-add-line size-4" />
+      <span aria-hidden className="i-ri-add-line size-4" />
       {t(($) => $['nodes.dataSource.add'], { ns: 'workflow' })}
     </Button>
   )

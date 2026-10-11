@@ -22,7 +22,7 @@ type FileUploaderInAttachmentProps = {
   fileConfig: FileUpload
 }
 const FileUploaderInAttachment = ({ isDisabled, fileConfig }: FileUploaderInAttachmentProps) => {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['common'])
   const files = useStore((s) => s.files)
   const { handleRemoveFile, handleReUploadFile } = useFile(fileConfig)
   const options = [
@@ -50,7 +50,7 @@ const FileUploaderInAttachment = ({ isDisabled, fileConfig }: FileUploaderInAtta
           disabled={!!(fileConfig.number_limits && files.length >= fileConfig.number_limits)}
         >
           <span className="shrink-0">{option.icon}</span>
-          <span className="ml-1 min-w-0 truncate">{option.label}</span>
+          <span className="min-w-0 truncate">{option.label}</span>
           {option.value === TransferMethod.local_file && <FileInput fileConfig={fileConfig} />}
         </Button>
       )
