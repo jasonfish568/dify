@@ -16,6 +16,8 @@ from core.workflow.node_factory import (
     is_start_node_type,
     resolve_workflow_node_class,
 )
+from core.workflow.nodes.agent_v2.binding_resolver import WorkflowAgentBindingResolver
+from core.workflow.nodes.agent_v2.metadata_filter_variables import metadata_filter_variable_selectors
 from core.workflow.system_variables import (
     default_system_variables,
     get_node_creation_preload_selectors,
@@ -40,6 +42,7 @@ from graphon.nodes import BuiltinNodeTypes
 from graphon.nodes.base.node import Node
 from graphon.runtime import ChildGraphNotFoundError, GraphRuntimeState, VariablePool
 from graphon.variable_loader import DUMMY_VARIABLE_LOADER, VariableLoader, load_into_variable_pool
+from models.agent_config_entities import AgentSoulConfig
 from models.workflow import Workflow
 
 logger = logging.getLogger(__name__)
@@ -327,6 +330,24 @@ class WorkflowEntry:
             )
         except NotImplementedError:
             variable_mapping = {}
+        if node_type == BuiltinNodeTypes.AGENT and node_version == "2":
+            # Agent Soul lives in its owned snapshot, outside graph node data.
+            # Single-step execution must also load references used only by its
+            # retrieval filters, which are absent from the task prompt.
+            bundle = WorkflowAgentBindingResolver().resolve(
+                tenant_id=workflow.tenant_id,
+                app_id=workflow.app_id,
+                workflow_id=workflow.id,
+                node_id=node_id,
+            )
+            agent_soul = AgentSoulConfig.model_validate(bundle.snapshot.config_snapshot_dict)
+            variable_mapping = {
+                **variable_mapping,
+                **{
+                    f"{node_id}.metadata_filter.{'.'.join(selector)}": selector
+                    for selector in metadata_filter_variable_selectors(agent_soul)
+                },
+            }
         variable_mapping = inject_default_system_variable_mappings(
             node_id=node_id,
             node_type=node_type,

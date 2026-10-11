@@ -1,9 +1,18 @@
+import type { Node, Var } from '@/app/components/workflow/types'
 import type { AgentSoulConfigFormState } from '@/features/agent-v2/agent-composer/form-state'
-import { fireEvent, screen, within } from '@testing-library/react'
+import type { MetadataInDoc } from '@/models/datasets'
+import { act, fireEvent, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useAtomValue } from 'jotai'
+import { ReactFlowProvider } from 'reactflow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { MetadataFilteringModeEnum } from '@/app/components/workflow/nodes/knowledge-retrieval/types'
+import {
+  ComparisonOperator,
+  LogicalOperator,
+  MetadataFilteringModeEnum,
+  MetadataFilteringVariableType,
+} from '@/app/components/workflow/nodes/knowledge-retrieval/types'
+import { BlockEnum, VarType } from '@/app/components/workflow/types'
 import { formStateToAgentSoulConfig } from '@/features/agent-v2/agent-composer/conversions'
 import { defaultAgentSoulConfigFormState } from '@/features/agent-v2/agent-composer/form-state'
 import { AgentComposerProvider } from '@/features/agent-v2/agent-composer/provider'
@@ -12,6 +21,51 @@ import { RerankingModeEnum } from '@/models/datasets'
 import { renderWithConsoleQuery as render } from '@/test/console/query-data'
 import { AgentOrchestrateReadOnlyContext } from '../../read-only-context'
 import { AgentKnowledgeRetrieval } from '../index'
+
+vi.mock('@/app/components/workflow/nodes/_base/hooks/use-available-var-list', () => ({
+  default: (_nodeId: string, { filterVar }: { filterVar: (value: Var) => boolean }) => ({
+    availableVars: [
+      {
+        nodeId: 'start',
+        title: 'Start',
+        isStartNode: true,
+        vars: [
+          { variable: 'program_input', type: VarType.number },
+          { variable: 'item_input', type: VarType.string },
+        ].filter(filterVar),
+      },
+    ],
+    availableNodesWithParent: [
+      {
+        id: 'start',
+        position: { x: 0, y: 0 },
+        data: { type: BlockEnum.Start, title: 'Start', desc: '' },
+      } satisfies Node,
+    ],
+  }),
+}))
+
+const datasetQuery = vi.hoisted(() => ({
+  pages: [] as Array<{ data: unknown[] }>,
+  notify: () => {},
+}))
+vi.mock('@/service/knowledge/use-dataset', async () => {
+  const { useSyncExternalStore } = await import('react')
+  return {
+    useInfiniteDatasets: () => {
+      const pages = useSyncExternalStore(
+        (notify) => {
+          datasetQuery.notify = notify
+          return () => {
+            datasetQuery.notify = () => {}
+          }
+        },
+        () => datasetQuery.pages,
+      )
+      return { data: { pages } }
+    },
+  }
+})
 
 vi.mock('@/context/workspace-state', async () => {
   const { createWorkspaceStateModuleMock } = await import('@/test/console/state-fixture')
@@ -36,6 +90,7 @@ vi.mock('@/app/components/workflow/nodes/knowledge-retrieval/components/add-data
           search_method: string
         }
         is_multimodal: boolean
+        doc_metadata: MetadataInDoc[]
       }>,
     ) => void
   }) {
@@ -56,6 +111,20 @@ vi.mock('@/app/components/workflow/nodes/knowledge-retrieval/components/add-data
                 search_method: 'semantic',
               },
               is_multimodal: false,
+              doc_metadata: [
+                {
+                  id: 'program-metadata',
+                  name: 'guide_program_id',
+                  type: MetadataFilteringVariableType.number,
+                  value: '',
+                },
+                {
+                  id: 'item-metadata',
+                  name: 'guide_item_id',
+                  type: MetadataFilteringVariableType.string,
+                  value: '',
+                },
+              ],
             },
           ])
         }
@@ -108,15 +177,23 @@ function renderKnowledgeRetrieval({
   initialDraft = agentKnowledgeDraft,
   readOnly = false,
   showConfigSnapshot = false,
+  workflowNodeId,
 }: {
   initialDraft?: AgentSoulConfigFormState
   readOnly?: boolean
   showConfigSnapshot?: boolean
+  workflowNodeId?: string
 } = {}) {
   return render(
     <AgentComposerProvider initialDraft={initialDraft}>
       <AgentOrchestrateReadOnlyContext value={readOnly}>
-        <AgentKnowledgeRetrieval />
+        {workflowNodeId ? (
+          <ReactFlowProvider>
+            <AgentKnowledgeRetrieval workflowNodeId={workflowNodeId} />
+          </ReactFlowProvider>
+        ) : (
+          <AgentKnowledgeRetrieval />
+        )}
       </AgentOrchestrateReadOnlyContext>
       {showConfigSnapshot && <ConfigSnapshotPreview />}
     </AgentComposerProvider>,
@@ -140,6 +217,7 @@ vi.mock('@/context/permission-state', async () => {
 describe('AgentKnowledgeRetrieval', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    datasetQuery.pages = []
   })
 
   describe('Rendering', () => {
@@ -179,6 +257,193 @@ describe('AgentKnowledgeRetrieval', () => {
   })
 
   describe('User Interactions', () => {
+    it.each([false, true])(
+      'preserves saved metadata conditions while dataset definitions are loaded: %s',
+      async (loaded) => {
+        const user = userEvent.setup()
+        if (loaded)
+          datasetQuery.pages = [
+            {
+              data: [
+                {
+                  id: 'dataset-1',
+                  name: 'Guide knowledge',
+                  doc_metadata: [
+                    { id: 'program-metadata', name: 'guide_program_id', type: 'string' },
+                  ],
+                },
+              ],
+            },
+          ]
+        const draft: AgentSoulConfigFormState = {
+          ...agentKnowledgeDraft,
+          knowledgeRetrievals: [
+            {
+              id: 'retrieval-1',
+              name: 'Guide retrieval',
+              datasetRefs: [{ id: 'dataset-1', name: 'Guide knowledge' }],
+              metadataFilterMode: MetadataFilteringModeEnum.manual,
+              metadataFilteringConditions: {
+                logical_operator: LogicalOperator.and,
+                conditions: [
+                  {
+                    id: 'condition-1',
+                    metadata_id: 'program-metadata',
+                    name: 'guide_program_id',
+                    comparison_operator: ComparisonOperator.is,
+                    value: '{{#start.item_input#}}',
+                  },
+                ],
+              },
+            },
+          ],
+        }
+        renderKnowledgeRetrieval({
+          initialDraft: draft,
+          showConfigSnapshot: true,
+          workflowNodeId: 'agent-node',
+        })
+        await user.click(
+          screen.getByRole('button', {
+            name: 'agentV2.agentDetail.configure.knowledgeRetrieval.edit:{"name":"Guide retrieval"}',
+          }),
+        )
+        expect(screen.getByLabelText('config snapshot')).toHaveTextContent('{{#start.item_input#}}')
+        if (loaded) {
+          await user.click(screen.getByRole('button', { name: /metadata.panel.conditions/ }))
+          expect(screen.getByText('guide_program_id')).toBeInTheDocument()
+          await user.click(screen.getByRole('button', { name: /metadata.panel.add/ }))
+          expect(screen.getAllByText('guide_program_id')).toHaveLength(2)
+        } else {
+          expect(screen.getByRole('status', { name: 'appApi.loading' })).toBeInTheDocument()
+          expect(
+            screen.queryByRole('button', { name: /metadata.panel.conditions/ }),
+          ).not.toBeInTheDocument()
+        }
+      },
+    )
+
+    it.each([
+      ['string', 'item_input', ComparisonOperator.is],
+      ['number', 'program_input', ComparisonOperator.equal],
+    ] as const)(
+      'waits for metadata before editing a saved %s variable',
+      async (metadataType, variableName, comparisonOperator) => {
+        const user = userEvent.setup()
+        const value = `{{#start.${variableName}#}}`
+        renderKnowledgeRetrieval({
+          workflowNodeId: 'agent-node',
+          showConfigSnapshot: true,
+          initialDraft: {
+            ...agentKnowledgeDraft,
+            knowledgeRetrievals: [
+              {
+                id: 'retrieval-1',
+                name: 'Guide retrieval',
+                datasetRefs: [{ id: 'dataset-1', name: 'Guide knowledge' }],
+                metadataFilterMode: MetadataFilteringModeEnum.manual,
+                metadataFilteringConditions: {
+                  logical_operator: LogicalOperator.and,
+                  conditions: [
+                    {
+                      id: 'condition-1',
+                      metadata_id: 'guide-metadata',
+                      name: 'guide_item_id',
+                      comparison_operator: comparisonOperator,
+                      value,
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        })
+        await user.click(
+          screen.getByRole('button', {
+            name: 'agentV2.agentDetail.configure.knowledgeRetrieval.edit:{"name":"Guide retrieval"}',
+          }),
+        )
+        expect(screen.getByRole('status', { name: 'appApi.loading' })).toBeInTheDocument()
+        expect(
+          screen.queryByRole('button', { name: /metadata.panel.conditions/ }),
+        ).not.toBeInTheDocument()
+        expect(screen.getByLabelText('config snapshot')).toHaveTextContent(value)
+
+        await act(async () => {
+          datasetQuery.pages = [
+            {
+              data: [
+                {
+                  id: 'dataset-1',
+                  name: 'Guide knowledge',
+                  doc_metadata: [
+                    { id: 'guide-metadata', name: 'guide_item_id', type: metadataType },
+                  ],
+                },
+              ],
+            },
+          ]
+          datasetQuery.notify()
+        })
+
+        expect(screen.queryByRole('status', { name: 'appApi.loading' })).not.toBeInTheDocument()
+        await user.click(screen.getByRole('button', { name: /metadata.panel.conditions/ }))
+        expect(screen.getByRole('button', { name: 'Variable' })).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Constant' })).not.toBeInTheDocument()
+        expect(screen.getByText(variableName)).toBeInTheDocument()
+        expect(screen.getByLabelText('config snapshot')).toHaveTextContent(value)
+      },
+    )
+
+    it.each([
+      ['guide_program_id', 'program_input', 'item_input'],
+      ['guide_item_id', 'item_input', 'program_input'],
+    ])(
+      'should save a matching workflow variable for %s',
+      async (metadataName, variableName, otherTypeVariable) => {
+        const user = userEvent.setup()
+        renderKnowledgeRetrieval({ workflowNodeId: 'agent-node', showConfigSnapshot: true })
+
+        await user.click(
+          screen.getByRole('button', {
+            name: 'agentV2.agentDetail.configure.knowledgeRetrieval.add',
+          }),
+        )
+        await user.click(
+          screen.getByRole('button', {
+            name: 'common.operation.add workflow.nodes.knowledgeRetrieval.knowledge',
+          }),
+        )
+        await user.click(
+          screen.getByRole('button', {
+            name: 'workflow.nodes.knowledgeRetrieval.metadata.options.disabled.title',
+          }),
+        )
+        await user.click(
+          screen.getByRole('menuitemradio', { name: /metadata.options.manual.title/ }),
+        )
+        await user.click(screen.getByRole('button', { name: /metadata.panel.conditions/ }))
+        await user.click(
+          screen.getByRole('button', {
+            name: 'workflow.nodes.knowledgeRetrieval.metadata.panel.add',
+          }),
+        )
+        await user.click(screen.getByText(metadataName))
+        await user.click(screen.getByRole('button', { name: 'Constant' }))
+        await user.click(screen.getByText('Variable', { exact: true }))
+        await user.click(
+          screen.getByText('workflow.nodes.knowledgeRetrieval.metadata.panel.select'),
+        )
+
+        expect(screen.queryByText(otherTypeVariable)).not.toBeInTheDocument()
+        await user.click(screen.getByText(variableName))
+        expect(screen.getByLabelText('config snapshot')).toHaveTextContent(
+          `{{#start.${variableName}#}}`,
+        )
+        expect(screen.getByLabelText('config snapshot')).toHaveTextContent(metadataName)
+      },
+    )
+
     it('should open the knowledge retrieval dialog from the add button', async () => {
       const user = userEvent.setup()
       renderKnowledgeRetrieval()

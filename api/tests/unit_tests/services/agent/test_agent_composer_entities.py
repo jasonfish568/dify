@@ -14,6 +14,43 @@ from services.entities.agent_entities import (
 )
 
 
+def test_workflow_metadata_filter_saves_ui_identifiers_and_variable_value():
+    condition = {
+        "id": "condition-1",
+        "metadata_id": "metadata-1",
+        "name": "guide_program_id",
+        "comparison_operator": "=",
+        "value": "{{#start.guide_program_id#}}",
+    }
+    payload = ComposerSavePayload.model_validate(
+        {
+            "variant": "workflow",
+            "save_strategy": "node_job_only",
+            "agent_soul": {
+                "knowledge": {
+                    "sets": [
+                        {
+                            "id": "exhibits",
+                            "name": "Exhibits",
+                            "datasets": [{"id": "dataset-1"}],
+                            "query": {"mode": "generated_query"},
+                            "retrieval": {"mode": "multiple", "top_k": 4},
+                            "metadata_filtering": {
+                                "mode": "manual",
+                                "conditions": {"logical_operator": "and", "conditions": [condition]},
+                            },
+                        }
+                    ],
+                },
+            },
+        }
+    )
+    ComposerConfigValidator.validate_draft_save_payload(payload)
+    assert payload.agent_soul is not None
+    saved = payload.agent_soul.model_dump(mode="json")["knowledge"]["sets"][0]
+    assert saved["metadata_filtering"]["conditions"]["conditions"] == [condition]
+
+
 def test_default_agent_soul_enables_file_upload_feature():
     agent_soul = AgentSoulConfig()
 

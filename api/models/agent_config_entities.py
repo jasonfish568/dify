@@ -422,6 +422,9 @@ class AgentKnowledgeRetrievalConfig(BaseModel):
 class AgentKnowledgeMetadataCondition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    # Preserve editor identities when saving; they are not retrieval parameters.
+    id: str | None = None
+    metadata_id: str | None = None
     name: str = Field(min_length=1, max_length=255)
     comparison_operator: SupportedComparisonOperator
     value: ConditionValue = None

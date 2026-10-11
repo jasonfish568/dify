@@ -29,7 +29,6 @@ import {
 import Field from '@/app/components/workflow/nodes/_base/components/field'
 import AddKnowledge from '@/app/components/workflow/nodes/knowledge-retrieval/components/add-dataset'
 import DatasetList from '@/app/components/workflow/nodes/knowledge-retrieval/components/dataset-list'
-import MetadataFilter from '@/app/components/workflow/nodes/knowledge-retrieval/components/metadata/metadata-filter'
 import RetrievalConfig from '@/app/components/workflow/nodes/knowledge-retrieval/components/retrieval-config'
 import {
   ComparisonOperator,
@@ -46,7 +45,9 @@ import {
 } from '@/features/agent-v2/agent-composer/knowledge-validation'
 import { agentComposerKnowledgeRetrievalsAtom } from '@/features/agent-v2/agent-composer/store-modules/knowledge'
 import { ChunkingMode, DatasetPermission, DataSourceType } from '@/models/datasets'
+import { useInfiniteDatasets } from '@/service/knowledge/use-dataset'
 import { AppModeEnum, RETRIEVE_METHOD, RETRIEVE_TYPE } from '@/types/app'
+import { AgentMetadataFilter } from './metadata-filter'
 
 type KnowledgeRetrievalQueryMode = 'agent' | 'custom'
 type MetadataFilteringConditions = {
@@ -68,6 +69,7 @@ type KnowledgeRetrievalDialogState = {
 }
 
 type AgentKnowledgeRetrievalDialogProps = {
+  workflowNodeId?: string
   item?: AgentKnowledgeRetrievalItem
   initialName?: string
   onItemCreate?: (item: AgentKnowledgeRetrievalItem) => void
@@ -323,6 +325,7 @@ function EditableKnowledgeRetrievalName({
 }
 
 function AgentKnowledgeRetrievalDialogContent({
+  workflowNodeId,
   item,
   initialName,
   onItemCreate,
@@ -347,9 +350,33 @@ function AgentKnowledgeRetrievalDialogContent({
     name,
     queryMode,
     retrievalMode,
-    selectedDatasets,
+    selectedDatasets: storedDatasets,
     singleRetrievalConfig,
   } = dialogState
+  // Saved Agent snapshots contain dataset references, not metadata definitions.
+  // Load definitions before allowing MetadataTrigger to prune deleted fields.
+  const unresolvedDatasetIds = storedDatasets
+    .filter((dataset) => dataset.doc_metadata === undefined)
+    .map((dataset) => dataset.id)
+  const { data: datasetPages } = useInfiniteDatasets(
+    { ids: unresolvedDatasetIds, page: 1, limit: 100 },
+    { enabled: unresolvedDatasetIds.length > 0 },
+  )
+  const selectedDatasets = useMemo(() => {
+    const fetchedDatasets = new Map(
+      datasetPages?.pages.flatMap((page) =>
+        page.data.map((dataset) => [dataset.id, dataset] as const),
+      ),
+    )
+    return storedDatasets.map((dataset) =>
+      dataset.doc_metadata === undefined
+        ? { ...dataset, ...fetchedDatasets.get(dataset.id) }
+        : dataset,
+    )
+  }, [storedDatasets, datasetPages])
+  const selectedDatasetsLoaded = selectedDatasets.every(
+    (dataset) => dataset.doc_metadata !== undefined,
+  )
   const { modelList: rerankModelList, defaultModel: rerankDefaultModel } =
     useModelListAndDefaultModelAndCurrentProviderAndModel(ModelTypeEnum.rerank)
   const { currentModel: currentRerankModel, currentProvider: currentRerankProvider } =
@@ -622,9 +649,10 @@ function AgentKnowledgeRetrievalDialogContent({
         </div>
 
         <div className="py-2">
-          <MetadataFilter
+          <AgentMetadataFilter
+            workflowNodeId={workflowNodeId}
             metadataList={metadataList}
-            selectedDatasetsLoaded
+            selectedDatasetsLoaded={selectedDatasetsLoaded}
             metadataFilterMode={metadataFilterMode}
             metadataFilteringConditions={metadataFilteringConditions}
             handleMetadataFilterModeChange={(nextMode) =>
@@ -721,6 +749,7 @@ function AgentKnowledgeRetrievalDialogContent({
 }
 
 export function AgentKnowledgeRetrievalDialog({
+  workflowNodeId,
   item,
   initialName,
   onItemCreate,
@@ -735,6 +764,7 @@ export function AgentKnowledgeRetrievalDialog({
         className="flex h-130 max-h-[calc(100dvh-2rem)] w-[400px] flex-col overflow-hidden p-0"
       >
         <AgentKnowledgeRetrievalDialogContent
+          workflowNodeId={workflowNodeId}
           item={item}
           initialName={initialName}
           onItemCreate={onItemCreate}

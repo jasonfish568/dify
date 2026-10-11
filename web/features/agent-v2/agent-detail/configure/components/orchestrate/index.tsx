@@ -159,7 +159,7 @@ export function AgentOrchestratePanel({
                   <AgentSkills />
                   <AgentFiles />
                   <AgentTools />
-                  <AgentKnowledgeRetrieval />
+                  <AgentKnowledgeRetrieval workflowNodeId={appId ? nodeId : undefined} />
                   <AgentAdvancedSettings />
                 </AgentBuildDraftChangedKeysProvider>
               </AgentOrchestrateAddActionsProvider>
