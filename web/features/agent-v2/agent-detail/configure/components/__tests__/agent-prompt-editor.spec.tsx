@@ -550,7 +550,7 @@ describe('AgentPromptEditor', () => {
 
   // Prompt slash commands should use the Agent Roster category menu and replace it with submenus.
   describe('Slash Commands', () => {
-    it('should open the slash menu at the start of the prompt', async () => {
+    it('should open the slash menu with knowledge retrieval at the start of the prompt', async () => {
       renderAgentPromptEditor('/')
 
       await openSlashMenuFromEditor()
@@ -559,10 +559,10 @@ describe('AgentPromptEditor', () => {
         screen.getByRole('button', { name: /agentDetail\.configure\.skills\.label/i }),
       ).toBeInTheDocument()
       expect(
-        screen.queryByRole('button', {
+        screen.getByRole('button', {
           name: /agentDetail\.configure\.knowledgeRetrieval\.label/i,
         }),
-      ).not.toBeInTheDocument()
+      ).toBeInTheDocument()
     })
 
     it.each(['Review/', 'Use https:/', 'path/to/'])(
