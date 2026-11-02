@@ -19,6 +19,15 @@ from graphon.engine_events import NodeRunFailedEvent, NodeRunStartedEvent, NodeR
 from graphon.enums import WorkflowNodeExecutionStatus
 from graphon.node_events import NodeRunResult
 from libs.datetime_utils import naive_utc_now
+from models.agent import (
+    Agent,
+    AgentConfigSnapshot,
+    AgentScope,
+    AgentSource,
+    WorkflowAgentBindingType,
+    WorkflowAgentNodeBinding,
+)
+from models.agent_config_entities import AgentSoulConfig, AgentSoulModelConfig, WorkflowNodeJobConfig
 from models.workflow import WorkflowNodeExecutionModel, WorkflowNodeExecutionTriggeredFrom
 from services.workflow_service import WorkflowService
 from tests.unit_tests.config_override import apply_config_overrides
@@ -60,9 +69,46 @@ def test_agent_preview_commits_runtime_identity_and_updates_same_row(sqlite_engi
             "edges": [],
         },
     )
+    agent = Agent(
+        tenant_id=tenant_id,
+        name="Preview Agent",
+        scope=AgentScope.WORKFLOW_ONLY,
+        source=AgentSource.WORKFLOW,
+        app_id=app_id,
+        workflow_id=workflow_id,
+        workflow_node_id=node_id,
+        active_config_has_model=True,
+        created_by=account_id,
+    )
+    snapshot = AgentConfigSnapshot(
+        tenant_id=tenant_id,
+        agent_id=agent.id,
+        version=1,
+        config_snapshot=AgentSoulConfig(
+            model=AgentSoulModelConfig(
+                plugin_id="langgenius/openai",
+                model_provider="openai",
+                model="gpt-test",
+            )
+        ),
+        created_by=account_id,
+    )
+    agent.active_config_snapshot_id = snapshot.id
+    binding = WorkflowAgentNodeBinding(
+        tenant_id=tenant_id,
+        app_id=app_id,
+        workflow_id=workflow_id,
+        workflow_version=workflow.version,
+        node_id=node_id,
+        binding_type=WorkflowAgentBindingType.INLINE_AGENT,
+        agent_id=agent.id,
+        current_snapshot_id=snapshot.id,
+        node_job_config=WorkflowNodeJobConfig(),
+        created_by=account_id,
+    )
     sessions = sessionmaker(sqlite_engine, expire_on_commit=False)
     with sessions.begin() as session:
-        session.add_all([app, account, workflow])
+        session.add_all([app, account, workflow, agent, snapshot, binding])
     repository = SQLAlchemyWorkflowNodeExecutionRepository(
         sessions, tenant_id, account, app_id, WorkflowNodeExecutionTriggeredFrom.SINGLE_STEP
     )
