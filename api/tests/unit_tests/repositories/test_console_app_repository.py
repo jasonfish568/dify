@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Callable
+from dataclasses import asdict
 from uuid import uuid4
 
 import pytest
@@ -17,9 +18,10 @@ from models.model import App, AppMode, AppModelConfig, AppStar, IconType, Site
 from models.workflow import Workflow, WorkflowType
 from repositories.app.console_repository import ConsoleAppRepository
 from services.app.console_service import ConsoleAppNotFoundError
+from services.app_tracing_config_service import AppTraceSettings
 from services.entities.app_entities import (
     AppListParams,
-    AppTraceSettings,
+    AppRecord,
     StarredAppListParams,
     UpdateAppParams,
 )
@@ -55,6 +57,81 @@ def repository(sqlite_session_factory: sessionmaker[Session]) -> ConsoleAppRepos
     return ConsoleAppRepository(session_factory=sqlite_session_factory)
 
 
+@pytest.mark.parametrize("case", ["visible", "missing", "disabled_api", "disabled_status", "foreign_workspace"])
+def test_visible_app_lookup_checks_workspace_status_and_api(sqlite_session: Session, case: str) -> None:
+    app = persist_app(sqlite_session, enable_api=case != "disabled_api")
+    if case == "disabled_status":
+        sqlite_session.execute(
+            text("UPDATE apps SET status = :status WHERE id = :app_id"), {"status": "disabled", "app_id": app.id}
+        )
+        sqlite_session.commit()
+    app_id = str(uuid4()) if case == "missing" else app.id
+    tenant_id = str(uuid4()) if case == "foreign_workspace" else WORKSPACE
+
+    result = ConsoleAppRepository.get_visible_app_by_id(app_id, sqlite_session, tenant_id=tenant_id)
+
+    if case == "visible":
+        assert result is app
+    else:
+        assert result is None
+
+
+def test_visible_apps_bulk_lookup_preserves_cross_workspace_semantics(sqlite_session: Session) -> None:
+    visible = persist_app(sqlite_session)
+    foreign = persist_app(sqlite_session, tenant_id=str(uuid4()))
+    disabled_api = persist_app(sqlite_session, enable_api=False)
+
+    result = ConsoleAppRepository.find_visible_apps_by_ids(
+        [visible.id, foreign.id, disabled_api.id, str(uuid4())], sqlite_session
+    )
+
+    assert {app.id for app in result} == {visible.id, foreign.id}
+
+
+def test_visible_apps_bulk_lookup_skips_database_for_empty_ids(unbound_session: Session) -> None:
+    assert ConsoleAppRepository.find_visible_apps_by_ids([], unbound_session) == []
+
+
+def test_related_apps_materializes_scoped_records_and_closes_session(sqlite_engine: Engine) -> None:
+    factory = sessionmaker(bind=sqlite_engine, expire_on_commit=False, close_resets_only=False)
+    with factory() as session:
+        visible_id = persist_app(session, name="Visible").id
+        disabled_id = persist_app(session, enable_api=False).id
+        foreign_id = persist_app(session, tenant_id=str(uuid4())).id
+
+    repository = ConsoleAppRepository(session_factory=factory)
+    connections: set[object] = set()
+    checkouts: list[object] = []
+
+    def checkout(connection: object, *_args: object) -> None:
+        connections.add(connection)
+        checkouts.append(connection)
+
+    def checkin(connection: object, *_args: object) -> None:
+        connections.remove(connection)
+
+    event.listen(sqlite_engine, "checkout", checkout)
+    event.listen(sqlite_engine, "checkin", checkin)
+    try:
+        related = repository.related_apps(WORKSPACE, [disabled_id, foreign_id, visible_id, str(uuid4())])
+        assert [item.id for item in related] == [disabled_id, visible_id]
+        assert all(isinstance(item, AppRecord) for item in related)
+        assert not connections
+
+        checkout_count = len(checkouts)
+        assert checkout_count > 0
+        assert asdict(related[1])["name"] == "Visible"
+        serialized = AppPagination.model_validate(
+            {"page": 1, "limit": 2, "total": 2, "has_more": False, "data": related}
+        ).model_dump(mode="json")
+        assert [item["id"] for item in serialized["data"]] == [disabled_id, visible_id]
+        assert len(checkouts) == checkout_count
+        assert not connections
+    finally:
+        event.remove(sqlite_engine, "checkout", checkout)
+        event.remove(sqlite_engine, "checkin", checkin)
+
+
 def test_rbac_maintainer_lookup_requires_owning_workspace(
     repository: ConsoleAppRepository, sqlite_session: Session
 ) -> None:
@@ -83,7 +160,6 @@ def test_authorization_maintainer_requires_normal_app(
         lambda repo, ctx, app_id: repo.rename(ctx, app_id, "Renamed"),
         lambda repo, ctx, app_id: repo.set_starred(ctx, app_id, True),
         lambda repo, ctx, app_id: repo.get_trace(ctx, app_id),
-        lambda repo, ctx, app_id: repo.set_trace(ctx, app_id, AppTraceSettings(True, "langfuse")),
         lambda repo, ctx, app_id: repo.get_reference(ctx, app_id),
     ],
 )
@@ -255,13 +331,8 @@ def test_openapi_visible_app_list_only_includes_apps_with_api_enabled(
     assert page.total == 1
 
 
-def test_trace_settings_commit_and_default(repository: ConsoleAppRepository, sqlite_session: Session) -> None:
+def test_trace_settings_default(repository: ConsoleAppRepository, sqlite_session: Session) -> None:
     app = persist_app(sqlite_session)
-    assert repository.get_trace(CONTEXT, app.id) == AppTraceSettings()
-    settings = AppTraceSettings(True, "langfuse")
-    repository.set_trace(CONTEXT, app.id, settings)
-    assert repository.get_trace(CONTEXT, app.id) == settings
-    repository.set_trace(CONTEXT, app.id, AppTraceSettings())
     assert repository.get_trace(CONTEXT, app.id) == AppTraceSettings()
 
 

@@ -1,6 +1,11 @@
+import type { DatasetDocMetadataResponse } from '@dify/contracts/api/console/datasets/types.gen'
+import type { KnowledgeFsSpaceListItemResponse } from '@dify/contracts/api/console/knowledge-fs/types.gen'
 import type { Node, Var } from '@/app/components/workflow/types'
-import type { AgentSoulConfigFormState } from '@/features/agent-v2/agent-composer/form-state'
-import type { MetadataInDoc } from '@/models/datasets'
+import type {
+  AgentKnowledgeRetrievalItem,
+  AgentSoulConfigFormState,
+} from '@/features/agent-v2/agent-composer/form-state'
+import { zKnowledgeFsSpaceListResponse } from '@dify/contracts/api/console/knowledge-fs/zod.gen'
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useAtomValue } from 'jotai'
@@ -18,7 +23,11 @@ import { defaultAgentSoulConfigFormState } from '@/features/agent-v2/agent-compo
 import { AgentComposerProvider } from '@/features/agent-v2/agent-composer/provider'
 import { agentComposerDraftAtom } from '@/features/agent-v2/agent-composer/store'
 import { RerankingModeEnum } from '@/models/datasets'
-import { renderWithConsoleQuery as render } from '@/test/console/query-data'
+import { consoleQuery } from '@/service/console'
+import {
+  createConsoleQueryClient,
+  renderWithConsoleQuery as render,
+} from '@/test/console/query-data'
 import { AgentOrchestratePanel } from '../../index'
 import {
   AgentOrchestrateReadOnlyContext,
@@ -127,7 +136,7 @@ vi.mock('@/app/components/workflow/nodes/knowledge-retrieval/components/add-data
           search_method: string
         }
         is_multimodal: boolean
-        doc_metadata: MetadataInDoc[]
+        doc_metadata: DatasetDocMetadataResponse[]
       }>,
     ) => void
   }) {
@@ -153,13 +162,11 @@ vi.mock('@/app/components/workflow/nodes/knowledge-retrieval/components/add-data
                   id: 'program-metadata',
                   name: 'guide_program_id',
                   type: MetadataFilteringVariableType.number,
-                  value: '',
                 },
                 {
                   id: 'item-metadata',
                   name: 'guide_item_id',
                   type: MetadataFilteringVariableType.string,
-                  value: '',
                 },
               ],
             },
@@ -310,18 +317,53 @@ describe('AgentKnowledgeRetrieval', () => {
       ).not.toBeInTheDocument()
     })
 
-    it('should keep add action available for build drafts', () => {
+    it('should disable adding in a read-only composer', () => {
       renderKnowledgeRetrieval({ readOnly: true })
 
       expect(
         screen.getByRole('button', {
           name: 'agentV2.agentDetail.configure.knowledgeRetrieval.add',
         }),
-      ).toBeInTheDocument()
+      ).toBeDisabled()
     })
   })
 
   describe('User Interactions', () => {
+    it('keeps KnowledgeFS bindings when editing a Classic retrieval', async () => {
+      const user = userEvent.setup()
+      renderKnowledgeRetrieval({
+        showConfigSnapshot: true,
+        initialDraft: {
+          ...agentKnowledgeDraft,
+          knowledgeRetrievals: [
+            ...agentKnowledgeDraft.knowledgeRetrievals,
+            { id: 'space-binding', controlSpaceId: 'space-1', name: 'KnowledgeFS docs' },
+          ],
+        },
+      })
+      await user.click(
+        screen.getByRole('button', {
+          name: 'agentV2.agentDetail.configure.knowledgeRetrieval.edit:{"name":"agentV2.agentDetail.configure.knowledgeRetrieval.retrievalOne"}',
+        }),
+      )
+      const dialog = screen.getByRole('dialog')
+      await user.click(getDialogNameEditButton(dialog))
+      const name = within(dialog).getByRole('textbox', {
+        name: /knowledgeRetrieval.dialog.nameLabel/,
+      })
+      await user.clear(name)
+      await user.type(name, 'Classic docs{Enter}')
+      const knowledge = JSON.parse(screen.getByLabelText('config snapshot').textContent ?? '{}')
+      expect(knowledge.sets[0]).toMatchObject({ id: 'retrieval-1', name: 'Classic docs' })
+      expect(knowledge.spaces).toEqual([
+        expect.objectContaining({
+          id: 'space-binding',
+          control_space_id: 'space-1',
+          name: 'KnowledgeFS docs',
+        }),
+      ])
+    })
+
     it.each(['failed', 'missing'])(
       'preserves saved filters and allows recovery when dataset metadata is %s',
       async (result) => {
@@ -1134,7 +1176,11 @@ describe('AgentKnowledgeRetrieval', () => {
         screen.queryByText('agentV2.agentDetail.configure.knowledgeRetrieval.retrievalOne'),
       ).not.toBeInTheDocument()
       expect(
-        screen.getByText('agentV2.agentDetail.configure.knowledgeRetrieval.empty.title'),
+        within(
+          screen.getByRole('region', {
+            name: 'agentV2.agentDetail.configure.knowledgeRetrieval.label',
+          }),
+        ).getByText('agentV2.agentDetail.configure.knowledgeRetrieval.empty.title'),
       ).toBeInTheDocument()
     })
   })
@@ -1202,5 +1248,413 @@ describe('AgentKnowledgeRetrieval', () => {
         }),
       ).not.toBeInTheDocument()
     })
+  })
+})
+
+const SPACE = '00000000-0000-4000-8000-000000000001'
+const SECOND = '00000000-0000-4000-8000-000000000002'
+const space = (
+  id = SPACE,
+  name = 'Product manual',
+  available = true,
+): KnowledgeFsSpaceListItemResponse => ({
+  control_space_id: id,
+  created_at: '2026-09-07T00:00:00Z',
+  updated_at: '2026-09-07T00:00:00Z',
+  knowledge_space_id: id,
+  linked_apps: 0,
+  owner_account_id: 'account',
+  permission_keys: [
+    'knowledge_space_read',
+    'knowledge_space_query',
+    'knowledge_space_access_config',
+  ],
+  resource_version: 1,
+  state: 'active',
+  technical_status: available ? 'available' : 'unavailable',
+  visibility: 'only_me',
+  technical_summary: {
+    knowledge_space_id: id,
+    name,
+    description: 'A real knowledge space',
+    revision: 1,
+    slug: id,
+  },
+})
+const binding = { id: 'docs', controlSpaceId: SPACE, name: 'Product manual' }
+
+function Snapshot({ label = 'snapshot' }: { label?: string }) {
+  const draft = useAtomValue(agentComposerDraftAtom)
+  return (
+    <output aria-label={label}>
+      {JSON.stringify({
+        prompt: draft.prompt,
+        knowledge: formStateToAgentSoulConfig({ formState: draft }).knowledge,
+      })}
+    </output>
+  )
+}
+
+function setup(
+  bindings: AgentKnowledgeRetrievalItem[] = [],
+  {
+    enabled = true,
+    viewingVersion = false,
+    readOnly = false,
+    label = 'snapshot',
+    spaces = [space(), space(SECOND, 'Engineering')],
+    hasMore = false,
+  } = {},
+) {
+  const queryClient = createConsoleQueryClient()
+  const options = consoleQuery.knowledgeFs.spaces.get.infiniteOptions({
+    input: (pageParam) => ({ query: { limit: 50, page: pageParam } }),
+    initialPageParam: 1,
+    getNextPageParam: () => undefined,
+  })
+  queryClient.setQueryData(options.queryKey, {
+    pages: [
+      zKnowledgeFsSpaceListResponse.parse({ data: spaces, page: 1, limit: 50, has_more: hasMore }),
+    ],
+    pageParams: [1],
+  })
+  return render(
+    <AgentComposerProvider
+      initialDraft={{
+        ...defaultAgentSoulConfigFormState,
+        prompt: '[§knowledge:docs:Product manual§]',
+        knowledgeRetrievals: bindings,
+      }}
+    >
+      <AgentOrchestrateViewingVersionContext value={viewingVersion}>
+        <AgentOrchestrateReadOnlyContext value={readOnly}>
+          <AgentKnowledgeRetrieval />
+        </AgentOrchestrateReadOnlyContext>
+      </AgentOrchestrateViewingVersionContext>
+      <Snapshot label={label} />
+    </AgentComposerProvider>,
+    { queryClient, knowledgeFsFeatures: { agent_enabled: enabled } },
+  )
+}
+const snapshot = () => JSON.parse(screen.getByLabelText('snapshot').textContent ?? '{}')
+const open = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(screen.getByRole('button', { name: /knowledgeFs.add/ }))
+  return screen.findByRole('dialog')
+}
+
+describe('KnowledgeFS composer interaction', () => {
+  it('selects multiple real names and commits only on confirmation', async () => {
+    const user = userEvent.setup()
+    setup()
+    const dialog = await open(user)
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Product manual' }))
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Engineering' }))
+    expect(snapshot().knowledge.spaces).toEqual([])
+    expect(within(dialog).queryByText(/retrievalSetting/)).not.toBeInTheDocument()
+    expect(
+      within(dialog).queryByRole('textbox', { name: /knowledgeFs.alias/ }),
+    ).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: /operation.confirm/ }))
+    expect(snapshot().knowledge.spaces.map((item: { name: string }) => item.name)).toEqual([
+      'Product manual',
+      'Engineering',
+    ])
+    expect(snapshot().knowledge.spaces[0].description).toBe('A real knowledge space')
+    expect(snapshot().knowledge.sets).toEqual([])
+  })
+
+  it('keeps knowledge descriptions accessible without a separate help action', async () => {
+    const user = userEvent.setup()
+    setup([], { spaces: [space()] })
+    const dialog = await open(user)
+    const list = within(dialog).getByRole('group', { name: /knowledgeFs.select/ })
+    expect(within(list).queryByRole('button')).not.toBeInTheDocument()
+    const checkbox = within(list).getByRole('checkbox', { name: 'Product manual' })
+    expect(checkbox).toHaveAccessibleDescription('A real knowledge space')
+    await user.click(checkbox)
+    expect(checkbox).toHaveAttribute('aria-checked', 'true')
+    await user.click(within(dialog).getByRole('button', { name: /advancedSettings.label/ }))
+    expect(within(dialog).getByRole('textbox', { name: /knowledgeFs.alias/ })).toHaveValue(
+      'Product manual',
+    )
+    expect(
+      within(dialog).getByRole('textbox', { name: /knowledgeFs.bindingDescription/ }),
+    ).toHaveValue('A real knowledge space')
+    expect(snapshot().knowledge.spaces).toEqual([])
+  })
+
+  it('limits Agent Knowledge Bases to 10 while retaining a Classic binding', async () => {
+    const user = userEvent.setup()
+    setup([{ id: 'classic', name: 'Classic Docs', datasetRefs: [{ id: 'dataset-1' }] }], {
+      spaces: Array.from({ length: 11 }, (_, index) =>
+        space(
+          `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+          `Space ${index + 1}`,
+        ),
+      ),
+    })
+    const dialog = await open(user)
+    for (let index = 1; index <= 10; index++) {
+      await user.click(within(dialog).getByRole('checkbox', { name: `Space ${index}` }))
+    }
+    const search = within(dialog).getByRole('searchbox')
+    await user.type(search, 'Space 11')
+    expect(within(dialog).getByRole('checkbox', { name: 'Space 11' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+    await user.clear(search)
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Space 1' }))
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Space 11' }))
+    await user.click(within(dialog).getByRole('button', { name: /operation.confirm/ }))
+    expect(snapshot().knowledge.spaces).toHaveLength(10)
+    expect(snapshot().knowledge.sets).toHaveLength(1)
+    expect(
+      snapshot().knowledge.spaces.some((item: { name: string }) => item.name === 'Space 11'),
+    ).toBe(true)
+  })
+
+  it('reveals invalid optional settings on submit without losing their draft', async () => {
+    const user = userEvent.setup()
+    setup([binding])
+    const dialog = await open(user)
+    const advanced = within(dialog).getByRole('button', { name: /advancedSettings.label/ })
+    await user.click(advanced)
+    await user.clear(within(dialog).getByRole('textbox', { name: /knowledgeFs.alias/ }))
+    await user.click(advanced)
+    await user.click(within(dialog).getByRole('button', { name: /operation.confirm/ }))
+    expect(advanced).toHaveAttribute('aria-expanded', 'true')
+    expect(within(dialog).getByRole('textbox', { name: /knowledgeFs.alias/ })).toHaveValue('')
+    expect(within(dialog).getByRole('alert')).toBeInTheDocument()
+    expect(snapshot().knowledge.spaces[0].name).toBe('Product manual')
+  })
+
+  it('discards cancelled edits and resets the next dialog draft', async () => {
+    const user = userEvent.setup()
+    setup([binding])
+    let dialog = await open(user)
+    await user.click(within(dialog).getByRole('button', { name: /advancedSettings.label/ }))
+    const alias = within(dialog).getByRole('textbox', { name: /knowledgeFs.alias/ })
+    await user.clear(alias)
+    await user.type(alias, 'Unsaved')
+    await user.click(within(dialog).getByRole('button', { name: /operation.cancel/ }))
+    expect(snapshot().knowledge.spaces[0].name).toBe('Product manual')
+    dialog = await open(user)
+    expect(
+      within(dialog).queryByRole('textbox', { name: /knowledgeFs.alias/ }),
+    ).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: /advancedSettings.label/ }))
+    expect(within(dialog).getByRole('textbox', { name: /knowledgeFs.alias/ })).toHaveValue(
+      'Product manual',
+    )
+  })
+
+  it('leaves the advanced settings focus indicator to the Collapsible primitive', async () => {
+    const user = userEvent.setup()
+    setup([binding])
+    const dialog = await open(user)
+    const advanced = within(dialog).getByRole('button', { name: /advancedSettings.label/ })
+    expect(advanced.className.split(/\s+/)).not.toContain('outline-hidden')
+  })
+
+  it('renames a stable binding and its prompt reference, then removes it', async () => {
+    const user = userEvent.setup()
+    setup([binding])
+    const dialog = await open(user)
+    await user.click(within(dialog).getByRole('button', { name: /advancedSettings.label/ }))
+    expect(within(dialog).queryByText(SPACE)).not.toBeInTheDocument()
+    expect(within(dialog).queryByText(binding.id)).not.toBeInTheDocument()
+    const alias = within(dialog).getByRole('textbox', { name: /knowledgeFs.alias/ })
+    await user.clear(alias)
+    await user.type(alias, 'Support docs')
+    await user.click(within(dialog).getByRole('button', { name: /operation.confirm/ }))
+    expect(snapshot().knowledge.spaces[0]).toMatchObject({ id: 'docs', name: 'Support docs' })
+    expect(snapshot().prompt).toContain('Support docs')
+    await user.click(screen.getByRole('button', { name: /knowledgeRetrieval.remove/ }))
+    expect(snapshot().knowledge.spaces).toEqual([])
+  })
+
+  it('requires explicit rebind after import and explicit removal of legacy datasets', async () => {
+    const user = userEvent.setup()
+    setup([{ ...binding, isMissing: true }])
+    const dialog = await open(user)
+    await user.click(within(dialog).getByRole('button', { name: /operation.confirm/ }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(snapshot().knowledge.spaces[0].is_missing).toBe(true)
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Product manual' }))
+    await user.click(within(dialog).getByRole('button', { name: /operation.confirm/ }))
+    expect(snapshot().knowledge.spaces[0].is_missing).toBe(false)
+  })
+
+  it.each([
+    'knowledge_space_read',
+    'knowledge_space_query',
+    'knowledge_space_access_config',
+  ] as const)('hides spaces without %s even when filtering by name', async (permission) => {
+    const user = userEvent.setup()
+    const restricted = space(SECOND, 'Restricted')
+    restricted.permission_keys = restricted.permission_keys.filter((key) => key !== permission)
+    setup([], { spaces: [space(), restricted] })
+    const dialog = await open(user)
+    expect(within(dialog).getAllByRole('checkbox')).toHaveLength(1)
+    expect(within(dialog).queryByText('Restricted')).not.toBeInTheDocument()
+    await user.type(within(dialog).getByRole('searchbox'), 'Restricted')
+    expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(within(dialog).getByText(/knowledgeFs.empty/)).toBeVisible()
+    expect(within(dialog).queryByText(/knowledgeFs.publishPermission/)).not.toBeInTheDocument()
+  })
+
+  it('hides unavailable and inactive spaces from the candidate list', async () => {
+    const user = userEvent.setup()
+    setup([], {
+      spaces: [space(SPACE, 'Unavailable', false), { ...space(SECOND), state: 'deleting' }],
+    })
+    const dialog = await open(user)
+    expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(within(dialog).getByText(/knowledgeFs.empty/)).toBeVisible()
+  })
+
+  it.each(['forbidden', 'missing'] as const)(
+    'preserves a %s existing binding until the user explicitly removes it',
+    async (status) => {
+      const user = userEvent.setup()
+      setup([binding], {
+        spaces: status === 'missing' ? [] : [{ ...space(), permission_keys: [] }],
+      })
+      const dialog = await open(user)
+      expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument()
+      expect(snapshot().knowledge.spaces[0]).toMatchObject({ id: binding.id })
+      await user.click(within(dialog).getByRole('button', { name: /operation.confirm/ }))
+      expect(dialog).toBeInTheDocument()
+      expect(within(dialog).getByRole('alert').textContent).toMatch(/knowledgeFs.unavailable/)
+      const advanced = within(dialog).getByRole('button', { name: /advancedSettings.label/ })
+      expect(advanced).toHaveAttribute('aria-expanded', 'true')
+      expect(within(dialog).queryByText(SPACE)).not.toBeInTheDocument()
+      await user.click(within(dialog).getByRole('button', { name: /knowledgeRetrieval.remove/ }))
+      expect(snapshot().knowledge.spaces).toHaveLength(1)
+      await user.click(within(dialog).getByRole('button', { name: /operation.confirm/ }))
+      expect(snapshot().knowledge.spaces).toEqual([])
+    },
+  )
+
+  it('does not infer lost permission from a partially loaded catalog', async () => {
+    const user = userEvent.setup()
+    setup([binding], { spaces: [space(SECOND, 'Engineering')], hasMore: true })
+    const dialog = await open(user)
+    expect(within(dialog).queryByText(/knowledgeFs.unavailable/)).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: /operation.confirm/ }))
+    expect(snapshot().knowledge.spaces[0]).toMatchObject({ id: binding.id })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('rechecks refreshed permissions without dropping the in-progress selection', async () => {
+    const user = userEvent.setup()
+    const { queryClient } = setup([], { spaces: [space()] })
+    const dialog = await open(user)
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Product manual' }))
+    const options = consoleQuery.knowledgeFs.spaces.get.infiniteOptions({
+      input: (pageParam) => ({ query: { limit: 50, page: pageParam } }),
+      initialPageParam: 1,
+      getNextPageParam: () => undefined,
+    })
+    const refresh = (spaces: KnowledgeFsSpaceListItemResponse[]) =>
+      queryClient.setQueryData(options.queryKey, {
+        pages: [
+          zKnowledgeFsSpaceListResponse.parse({
+            data: spaces,
+            page: 1,
+            limit: 50,
+            has_more: false,
+          }),
+        ],
+        pageParams: [1],
+      })
+    refresh([{ ...space(), permission_keys: ['knowledge_space_read', 'knowledge_space_query'] }])
+    await waitFor(() => expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument())
+    await user.click(within(dialog).getByRole('button', { name: /operation.confirm/ }))
+    expect(within(dialog).getByRole('alert').textContent).toMatch(/knowledgeFs.unavailable/)
+    expect(within(dialog).getByRole('textbox', { name: /knowledgeFs.alias/ })).toHaveValue(
+      'Product manual',
+    )
+    expect(snapshot().knowledge.spaces).toEqual([])
+    refresh([space()])
+    expect(await within(dialog).findByRole('checkbox', { name: 'Product manual' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    await user.click(within(dialog).getByRole('button', { name: /operation.confirm/ }))
+    expect(snapshot().knowledge.spaces[0]).toMatchObject({
+      control_space_id: SPACE,
+      name: 'Product manual',
+    })
+  })
+
+  it('keeps Classic bindings when adding an Agent Knowledge Base', async () => {
+    const user = userEvent.setup()
+    setup([{ id: 'legacy', name: 'Old documents', datasetRefs: [{ id: 'dataset' }] }])
+    const dialog = await open(user)
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument()
+    expect(snapshot().knowledge.sets).toHaveLength(1)
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Product manual' }))
+    await user.click(within(dialog).getByRole('button', { name: /operation.confirm/ }))
+    expect(snapshot().knowledge.sets[0]).toMatchObject({
+      id: 'legacy',
+      datasets: [{ id: 'dataset' }],
+    })
+    expect(snapshot().knowledge.spaces).toHaveLength(1)
+  })
+
+  it('disables adding when server configuration is unavailable', () => {
+    setup([], { enabled: false })
+    expect(screen.getByRole('button', { name: /knowledgeFs.add/ })).toBeDisabled()
+    expect(screen.getByText(/knowledgeFs.runtimeUnavailable/)).toBeInTheDocument()
+  })
+
+  it('does not offer additions when viewing a historical version', () => {
+    setup([binding], { viewingVersion: true })
+    expect(screen.queryByRole('button', { name: /knowledgeFs.add/ })).not.toBeInTheDocument()
+  })
+
+  it('keeps sibling composers isolated', async () => {
+    const user = userEvent.setup()
+    setup([binding], { label: 'first' })
+    setup([], { label: 'second' })
+    const firstAdd = screen.getAllByRole('button', { name: /knowledgeFs.add/ })[0]
+    if (!firstAdd) throw new Error('First composer must expose an add button')
+    await user.click(firstAdd)
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Engineering' }))
+    await user.click(within(dialog).getByRole('button', { name: /operation.confirm/ }))
+    expect(
+      JSON.parse(screen.getByLabelText('first').textContent ?? '{}').knowledge.spaces,
+    ).toHaveLength(2)
+    expect(
+      JSON.parse(screen.getByLabelText('second').textContent ?? '{}').knowledge.spaces,
+    ).toEqual([])
+  })
+
+  it('does not mutate a read-only composer', () => {
+    setup([binding], { readOnly: true })
+    expect(screen.getByRole('button', { name: /knowledgeFs.add/ })).toBeDisabled()
+    expect(
+      screen.queryByRole('button', { name: /knowledgeRetrieval.remove/ }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('rejects duplicate aliases at confirmation without changing the composer', async () => {
+    const user = userEvent.setup()
+    setup([binding])
+    const dialog = await open(user)
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Engineering' }))
+    await user.click(within(dialog).getByRole('button', { name: /advancedSettings.label/ }))
+    const aliases = within(dialog).getAllByRole('textbox', { name: /knowledgeFs.alias/ })
+    const secondAlias = aliases[1]
+    if (!secondAlias) throw new Error('Second binding must expose an alias field')
+    await user.clear(secondAlias)
+    await user.type(secondAlias, 'Product manual')
+    await user.click(within(dialog).getByRole('button', { name: /operation.confirm/ }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(within(dialog).getByRole('alert')).toBeInTheDocument()
+    expect(snapshot().knowledge.spaces).toHaveLength(1)
   })
 })
