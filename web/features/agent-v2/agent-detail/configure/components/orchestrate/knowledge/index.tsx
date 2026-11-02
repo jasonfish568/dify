@@ -4,21 +4,22 @@ import type { TFunction } from 'i18next'
 import type { AgentOrchestrateAddActionOptions } from '../add-actions-context'
 import type { AgentKnowledgeRetrievalItem } from '@/features/agent-v2/agent-composer/form-state'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  addKnowledgeRetrievalAtom,
   agentComposerKnowledgeRetrievalsAtom,
   removeKnowledgeRetrievalAtom,
-  updateKnowledgeRetrievalAtom,
 } from '@/features/agent-v2/agent-composer/store-modules/knowledge'
+import { agentKnowledgeFsEnabledAtom } from '@/features/knowledge-fs-availability/state'
+import { ENABLE_AGENT_KNOWLEDGE_RETRIEVAL } from '../../../feature-flags'
 import { useRegisterAgentOrchestrateAddAction } from '../add-actions-context'
 import { ConfigureSectionAddButton } from '../common/add-button'
 import { ConfigureSectionConfigurableItem } from '../common/configurable-item'
 import { ConfigureSectionEmpty } from '../common/empty'
 import { ConfigureSection } from '../common/section'
 import { AgentConfigureTipContent } from '../common/tip-content'
-import { AgentKnowledgeRetrievalDialog } from './dialog'
+import { useAgentOrchestrateReadOnly } from '../read-only-context'
+import { AgentClassicKnowledgeRetrievalDialog, AgentKnowledgeRetrievalDialog } from './dialog'
 
 function KnowledgeRetrievalIcon() {
   return (
@@ -61,21 +62,103 @@ function AgentKnowledgeRetrievalRow({
   )
 }
 
-export function AgentKnowledgeRetrieval({ workflowNodeId }: { workflowNodeId?: string }) {
+function AgentKnowledgeFsRetrieval() {
   const { t } = useTranslation(['agentV2'])
-  const retrievals = useAtomValue(agentComposerKnowledgeRetrievalsAtom)
-  const addKnowledgeRetrieval = useSetAtom(addKnowledgeRetrievalAtom)
-  const updateKnowledgeRetrieval = useSetAtom(updateKnowledgeRetrievalAtom)
+  const retrievals = useAtomValue(agentComposerKnowledgeRetrievalsAtom).filter(
+    (item) => item.controlSpaceId,
+  )
+  const enabled = useAtomValue(agentKnowledgeFsEnabledAtom)
+  const readOnly = useAgentOrchestrateReadOnly()
+  const setRetrievals = useSetAtom(agentComposerKnowledgeRetrievalsAtom)
+  const removeKnowledgeRetrieval = useSetAtom(removeKnowledgeRetrievalAtom)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const addOptionsRef = useRef<AgentOrchestrateAddActionOptions | undefined>(undefined)
+  const knowledgeRetrievalTip = t(($) => $['agentDetail.configure.knowledgeFs.description'])
+  const retrievalListId = useId()
+  const addRetrieval = (options?: AgentOrchestrateAddActionOptions) => {
+    if (!enabled || readOnly) return
+    addOptionsRef.current = options
+    setIsDialogOpen(true)
+  }
+  const confirmBindings = (next: AgentKnowledgeRetrievalItem[]) => {
+    setRetrievals((current) => [...current.filter((item) => !item.controlSpaceId), ...next])
+    setIsDialogOpen(false)
+    const added = next.find((item) => !retrievals.some((previous) => previous.id === item.id))
+    if (added) addOptionsRef.current?.onAdded?.(added)
+    addOptionsRef.current = undefined
+  }
+  useRegisterAgentOrchestrateAddAction('knowledge', addRetrieval)
+
+  return (
+    <>
+      <ConfigureSection
+        label={t(($) => $['agentDetail.configure.knowledgeFs.title'])}
+        labelId={`${retrievalListId}-label`}
+        panelId={retrievalListId}
+        tip={knowledgeRetrievalTip}
+        panelContentClassName="flex flex-col gap-1"
+        actions={
+          <ConfigureSectionAddButton
+            ariaLabel={t(($) => $['agentDetail.configure.knowledgeFs.add'])}
+            onClick={() => addRetrieval()}
+            disabled={!enabled || readOnly}
+          />
+        }
+      >
+        {!enabled && (
+          <p role="status" className="text-sm text-text-warning">
+            {t(($) => $['agentDetail.configure.knowledgeFs.runtimeUnavailable'])}
+          </p>
+        )}
+        {retrievals.length === 0 ? (
+          <ConfigureSectionEmpty
+            title={t(($) => $['agentDetail.configure.knowledgeRetrieval.empty.title'])}
+            description={knowledgeRetrievalTip}
+          />
+        ) : (
+          retrievals.map((item) => (
+            <AgentKnowledgeRetrievalRow
+              key={item.id}
+              item={item}
+              onDelete={() => removeKnowledgeRetrieval(item.id)}
+              onEdit={() => {
+                if (!readOnly) setIsDialogOpen(true)
+              }}
+            />
+          ))
+        )}
+      </ConfigureSection>
+      <AgentKnowledgeRetrievalDialog
+        open={isDialogOpen}
+        initialBindings={retrievals}
+        onConfirm={confirmBindings}
+        onOpenChange={(open) => {
+          setIsDialogOpen(open)
+          if (!open) addOptionsRef.current = undefined
+        }}
+      />
+    </>
+  )
+}
+
+function AgentClassicKnowledgeRetrieval({ workflowNodeId }: { workflowNodeId?: string }) {
+  const { t } = useTranslation(['agentV2'])
+  const retrievals = useAtomValue(agentComposerKnowledgeRetrievalsAtom).filter(
+    (item) => !item.controlSpaceId,
+  )
+  const setRetrievals = useSetAtom(agentComposerKnowledgeRetrievalsAtom)
+  const readOnly = useAgentOrchestrateReadOnly()
   const removeKnowledgeRetrieval = useSetAtom(removeKnowledgeRetrievalAtom)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [addDialogName, setAddDialogName] = useState<string>()
   const [editingRetrieval, setEditingRetrieval] = useState<AgentKnowledgeRetrievalItem | null>(null)
-  const addOptionsRef = useRef<AgentOrchestrateAddActionOptions | undefined>(undefined)
 
-  const retrievalListId = 'agent-configure-knowledge-retrieval-list'
+  const retrievalListId = useId()
   const isDialogOpen = isAddDialogOpen || !!editingRetrieval
   const updateRetrieval = (nextRetrieval: AgentKnowledgeRetrievalItem) => {
-    updateKnowledgeRetrieval(nextRetrieval)
+    setRetrievals((current) =>
+      current.map((item) => (item.id === nextRetrieval.id ? nextRetrieval : item)),
+    )
     setEditingRetrieval(nextRetrieval)
   }
   const getDefaultRetrievalName = (index: number) => {
@@ -84,25 +167,22 @@ export function AgentKnowledgeRetrieval({ workflowNodeId }: { workflowNodeId?: s
 
     return t(($) => $['agentDetail.configure.knowledgeRetrieval.defaultName'], { index })
   }
-  const addRetrieval = (options?: AgentOrchestrateAddActionOptions) => {
-    addOptionsRef.current = options
+  const addRetrieval = () => {
+    if (readOnly) return
     setAddDialogName(getDefaultRetrievalName(retrievals.length + 1))
     setIsAddDialogOpen(true)
   }
   const createRetrieval = (nextRetrieval: AgentKnowledgeRetrievalItem) => {
-    addKnowledgeRetrieval(nextRetrieval)
+    setRetrievals((current) => [...current, nextRetrieval])
     setEditingRetrieval(nextRetrieval)
     setIsAddDialogOpen(false)
-    addOptionsRef.current?.onAdded?.(nextRetrieval)
-    addOptionsRef.current = undefined
   }
-  useRegisterAgentOrchestrateAddAction('knowledge', addRetrieval)
 
   return (
     <>
       <ConfigureSection
         label={t(($) => $['agentDetail.configure.knowledgeRetrieval.label'])}
-        labelId="agent-configure-knowledge-retrieval-label"
+        labelId={`${retrievalListId}-label`}
         panelId={retrievalListId}
         tip={<AgentConfigureTipContent type="knowledge" />}
         panelContentClassName="flex flex-col gap-1"
@@ -110,6 +190,7 @@ export function AgentKnowledgeRetrieval({ workflowNodeId }: { workflowNodeId?: s
           <ConfigureSectionAddButton
             ariaLabel={t(($) => $['agentDetail.configure.knowledgeRetrieval.add'])}
             onClick={() => addRetrieval()}
+            disabled={readOnly}
           />
         }
       >
@@ -124,12 +205,14 @@ export function AgentKnowledgeRetrieval({ workflowNodeId }: { workflowNodeId?: s
               key={item.id}
               item={item}
               onDelete={() => removeKnowledgeRetrieval(item.id)}
-              onEdit={() => setEditingRetrieval(item)}
+              onEdit={() => {
+                if (!readOnly) setEditingRetrieval(item)
+              }}
             />
           ))
         )}
       </ConfigureSection>
-      <AgentKnowledgeRetrievalDialog
+      <AgentClassicKnowledgeRetrievalDialog
         workflowNodeId={workflowNodeId}
         item={editingRetrieval ?? undefined}
         initialName={
@@ -142,10 +225,20 @@ export function AgentKnowledgeRetrieval({ workflowNodeId }: { workflowNodeId?: s
           setIsAddDialogOpen(open)
           if (!open) {
             setEditingRetrieval(null)
-            addOptionsRef.current = undefined
           }
         }}
       />
+    </>
+  )
+}
+
+export function AgentKnowledgeRetrieval({ workflowNodeId }: { workflowNodeId?: string }) {
+  return (
+    <>
+      <AgentKnowledgeFsRetrieval />
+      {ENABLE_AGENT_KNOWLEDGE_RETRIEVAL && (
+        <AgentClassicKnowledgeRetrieval workflowNodeId={workflowNodeId} />
+      )}
     </>
   )
 }

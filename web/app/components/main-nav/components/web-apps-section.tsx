@@ -214,7 +214,7 @@ const WebAppsSectionContent = () => {
           }
         />
         <CollapsiblePanel className="col-span-2 row-start-2">
-          <div className="px-2 pb-2">
+          <div className="px-2 pt-0.5 pb-2">
             <SearchInput
               ref={focusSearchOnAttach}
               value={searchText}
@@ -232,7 +232,7 @@ const WebAppsSectionContent = () => {
             aria-busy={installedAppsQuery.isFetching}
             aria-labelledby={sectionLabelId}
             style={{ overflowX: 'hidden' }}
-            className="overscroll-contain focus-visible:ring-2 focus-visible:ring-state-accent-solid focus-visible:ring-inset"
+            className="overscroll-contain"
             role="navigation"
           >
             <ScrollAreaContent style={{ minWidth: 0 }} className="w-full max-w-full px-2">
